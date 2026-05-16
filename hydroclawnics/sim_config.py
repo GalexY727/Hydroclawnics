@@ -1,2 +1,2 @@
-POD_COUNT = 500
+POD_COUNT = 200
 CROP_ORDER = ("lettuce", "tomato", "basil", "spinach")
