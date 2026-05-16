@@ -118,7 +118,7 @@ async def _run_cycle(client: AsyncOpenAI) -> None:
         ],
         temperature=1.0,
         top_p=0.95,
-        max_tokens=1024,
+        max_tokens=2048,
         extra_body={
             "chat_template_kwargs": {"enable_thinking": True},
             "reasoning_budget": 4096,
