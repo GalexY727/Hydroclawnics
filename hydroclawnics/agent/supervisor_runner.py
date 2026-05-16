@@ -118,7 +118,7 @@ async def _run_cycle(client: AsyncOpenAI) -> None:
         ],
         temperature=1.0,
         top_p=0.95,
-        max_tokens=400,
+        max_tokens=1024,
         extra_body={
             "chat_template_kwargs": {"enable_thinking": True},
             "reasoning_budget": 4096,
@@ -132,9 +132,31 @@ async def _run_cycle(client: AsyncOpenAI) -> None:
     try:
         parsed = json.loads(_extract_json(raw))
     except json.JSONDecodeError:
-        logger.error("Supervisor returned non-JSON response: %s", raw[:200])
-        alog.log("supervisor", None, "parse_error", {}, {"raw": raw[:500]}, reasoning_content)
-        return
+        logger.warning("Supervisor non-JSON on first attempt, retrying with json_object format")
+        retry = await client.chat.completions.create(
+            model=_SUPERVISOR_MODEL,
+            messages=[
+                {"role": "system", "content": _SUPERVISOR_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": raw},
+                {
+                    "role": "user",
+                    "content": (
+                        "Your response above was not valid JSON. "
+                        "Reply ONLY with the JSON object — no prose, no markdown fences."
+                    ),
+                },
+            ],
+            temperature=0.3,
+            max_tokens=1024,
+        )
+        raw = retry.choices[0].message.content or ""
+        try:
+            parsed = json.loads(_extract_json(raw))
+        except json.JSONDecodeError:
+            logger.error("Supervisor returned non-JSON response: %s", raw[:200])
+            alog.log("supervisor", None, "parse_error", {}, {"raw": raw[:500]}, reasoning_content)
+            return
 
     reasoning = parsed.get("reasoning", "")
     directives = parsed.get("directives", [])
