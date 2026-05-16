@@ -37,6 +37,7 @@ function Scene({ mappedPods, onPodSelect, controls }) {
         <PodMesh
           key={pod.pod_id}
           pod={pod}
+          podIndex={pod.podIndex}
           onPodSelect={(podId, position) => {
             controls.selectPod(position)
             window.setTimeout(() => onPodSelect?.(podId), 420)

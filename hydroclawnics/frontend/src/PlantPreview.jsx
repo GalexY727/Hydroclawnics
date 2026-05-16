@@ -2,14 +2,15 @@ import { Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import PodMesh from './PodMesh'
+import { deriveStage, deriveHealth } from './useFarm3D'
 
 function PreviewScene({ pod }) {
   const mockMappedPod = {
     pod_id: pod.id,
     status: pod.status,
     age_hours: Number(pod.age_hours) || 0,
-    heightScale: Math.min(1.4, Math.max(0.5, (Number(pod.plant_height_cm) || 10) / 15)),
-    color: { healthy: '#7fb069', warning: '#d4a373', critical: '#c9566b' }[pod.status] || '#7fb069',
+    stage: deriveStage(pod.age_hours),
+    health: deriveHealth(pod.status),
     position: [0, 0, 0],
   }
   return (
