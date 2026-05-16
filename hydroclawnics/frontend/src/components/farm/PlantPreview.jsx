@@ -40,21 +40,21 @@ function PreviewScene({ pod, autoRotate, onOrbitStart }) {
   )
 }
 
-export default function PlantPreview({ pod }) {
+export default function PlantPreview({ pod, className = 'mb-5 h-[180px]' }) {
   const [autoRotate, setAutoRotate] = useState(true)
 
   if (!pod) return null
   return (
     <div
-      className="mb-5 overflow-hidden rounded-md border"
-      style={{ height: 180, borderColor: 'var(--color-border)', background: '#0a1018' }}
+      className={`overflow-hidden rounded-md border ${className}`}
+      style={{ borderColor: 'var(--color-border)', background: '#0a1018' }}
     >
       <Suspense fallback={
         <div className="flex h-full items-center justify-center text-xs italic" style={{ color: 'var(--color-muted)' }}>
           Loading preview...
         </div>
       }>
-        <Canvas camera={{ position: [0.7, 0.45, 1.15], fov: 52 }} onPointerDown={() => setAutoRotate(false)}>
+        <Canvas camera={{ position: [1.4, 0.9, 2.3], fov: 32 }} onPointerDown={() => setAutoRotate(false)}>
           <PreviewScene pod={pod} autoRotate={autoRotate} onOrbitStart={() => setAutoRotate(false)} />
         </Canvas>
       </Suspense>
