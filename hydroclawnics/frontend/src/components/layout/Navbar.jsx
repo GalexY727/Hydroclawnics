@@ -1,4 +1,4 @@
-import lettuceLogo from '../../../../../media/lettuce.png'
+import appIcon from '../../../../../media/icon.ico'
 
 const statusColor = {
   connected: 'var(--color-success)',
@@ -23,7 +23,7 @@ export default function Navbar({ connectionStatus, healthSummary, tab, onTabChan
     >
       <div className="flex shrink-0 items-center gap-2.5">
         <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md border p-1" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
-          <img src={lettuceLogo} alt="" className="h-full w-full object-contain" />
+          <img src={appIcon} alt="" className="h-full w-full object-contain" />
         </div>
         <span className="hidden text-base font-semibold tracking-[-0.8px] sm:block" style={{ color: 'var(--color-text)' }}>
           Hydro
