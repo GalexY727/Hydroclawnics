@@ -3,7 +3,7 @@
 set -e
 
 echo "Pulling latest code..."
-cd /home/ubuntu/your-repo
+cd /home/ubuntu/Hydroclawnics-Simulation
 git pull origin main
 
 echo "Installing dependencies..."
@@ -16,7 +16,7 @@ ZONE_A_TYPE=real
 ZONE_B_TYPE=simulated
 ZONE_C_TYPE=simulated
 POLL_INTERVAL_SECONDS=60
-DB_PATH=/home/ubuntu/your-repo/hydro_log.db
+DB_PATH=/home/ubuntu/Hydroclawnics-Simulation/hydro_log.db
 DASHBOARD_PORT=8080
 EOF
 
