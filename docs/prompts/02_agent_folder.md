@@ -1,3 +1,4 @@
+-- THIS PROMPT HAS ALREADY BEEN EXECUTED, DO NOT ATTEMPT TO MAKE THESE CHANGES
 Create a branch off of the one you were previously on titled "agent-folder"
 Create the ./hydroclawnics/agent/ folder and all files needed to integrate
 a NemoClaw agent (running on NVIDIA Brev) with the existing FastAPI + WebSocket

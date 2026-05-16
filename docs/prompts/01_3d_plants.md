@@ -1,3 +1,4 @@
+-- THIS PROMPT HAS ALREADY BEEN EXECUTED, DO NOT ATTEMPT TO MAKE THESE CHANGES
 Edit the existing createPlantMesh() function in the Three.js plant geometry code.
 The current meshes look like trees (tall trunks, branching canopies). 
 We want hydroponics crops: lettuce, tomatoes, basil, spinach, microgreens.
