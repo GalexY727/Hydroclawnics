@@ -101,7 +101,7 @@ ACTIONS:
 No paragraphs. No hypotheticals. No "I need to check". Just the format above.\
 """
 
-_TABLE_AGENT_MODEL = os.getenv("TABLE_AGENT_MODEL", "nvidia/nemotron-4-9b-instruct")
+_TABLE_AGENT_MODEL = os.getenv("TABLE_AGENT_MODEL", "nvidia/nemotron-3-nano-30b-a3b")
 _TABLE_INTERVAL_S = int(os.getenv("TABLE_INTERVAL_S", "20"))
 _NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
