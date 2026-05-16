@@ -54,7 +54,7 @@ export default function PhysicalPot({ pods }) {
   const ecMs = Number(pod?.ec_ppm || 0) / 1000
 
   return (
-    <section className="shrink-0 rounded-lg border p-3" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
+    <div className="h-full rounded-lg border p-3" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-medium" style={{ color: 'var(--color-muted)' }}>
@@ -86,6 +86,6 @@ export default function PhysicalPot({ pods }) {
       <p className="mt-3 truncate text-xs italic" style={{ color: 'var(--color-muted)' }}>
         {pod?.last_action || 'No physical intervention logged yet'}
       </p>
-    </section>
+    </div>
   )
 }
