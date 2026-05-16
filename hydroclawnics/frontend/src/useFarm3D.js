@@ -1,16 +1,29 @@
 const STATUS_COLOR = {
-  healthy: '#7fb069',
-  warning: '#d4a373',
+  healthy:  '#7fb069',
+  warning:  '#d4a373',
   critical: '#c9566b',
 }
 
+function gridColumns(count) {
+  if (count <= 20) return 5
+  if (count <= 64) return 8
+  return 10
+}
+
 export default function useFarm3D(pods) {
-  return Object.values(pods).map((pod, idx) => ({
-    pod_id: pod.id,
-    status: pod.status,
-    // # FIX: Growth scale now follows the 0-72 hour requirement instead of flattening over 240 hours.
-    ageScale: Math.min(1, Math.max(0.3, 0.3 + (Number(pod.age_hours || 0) / 72) * 0.7)),
-    color: STATUS_COLOR[pod.status] || STATUS_COLOR.healthy,
-    position: [((idx % 4) - 1.5) * 3, 0, (Math.floor(idx / 4) - 2) * 3],
-  }))
+  const list = Object.values(pods)
+  const cols = gridColumns(list.length)
+  return list.map((pod, idx) => {
+    const col = idx % cols
+    const row = Math.floor(idx / cols)
+    const heightScale = Math.min(1.4, Math.max(0.5, (Number(pod.plant_height_cm) || 10) / 15))
+    return {
+      pod_id: pod.id,
+      status: pod.status,
+      age_hours: Number(pod.age_hours) || 0,
+      heightScale,
+      color: STATUS_COLOR[pod.status] || STATUS_COLOR.healthy,
+      position: [(col - (cols - 1) / 2) * 3, 0, (row - 1) * 3],
+    }
+  })
 }
