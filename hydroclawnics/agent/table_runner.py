@@ -330,13 +330,29 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
 
         messages.extend(tool_results)
 
-    if reasoning_text and not alog.validate_agent_response(reasoning_text):
-        logger.warning("[%s] Agent response looked truncated; treating cycle as no_op", table_id)
-        reasoning_text = "all parameters within range"
-        parsed = {"zone_id": table_id, "status": reading.status, "observations": [], "actions": []}
-        actions_taken = []
+    if actions_taken:
+        # Tools were called — text summary is for logging only; actions are already recorded.
+        if not (reasoning_text and alog.validate_agent_response(reasoning_text)):
+            reasoning_text = reasoning_text or f"Executed {len(actions_taken)} corrective action(s)"
+            parsed = {
+                "zone_id": table_id,
+                "status": reading.status,
+                "observations": [
+                    {"param": ft, "value": "", "flag": "out of range"}
+                    for ft in reading.fault_types
+                ],
+                "actions": [],
+            }
+        else:
+            parsed = parse_agent_response(reasoning_text)
     else:
-        parsed = parse_agent_response(reasoning_text)
+        # No tools called — the text response IS the decision (no_op path).
+        if reasoning_text and not alog.validate_agent_response(reasoning_text):
+            logger.warning("[%s] Agent response looked truncated; treating cycle as no_op", table_id)
+            reasoning_text = "all parameters within range"
+            parsed = {"zone_id": table_id, "status": reading.status, "observations": [], "actions": []}
+        else:
+            parsed = parse_agent_response(reasoning_text)
     cycle_ms = int((time.monotonic() - cycle_start) * 1000)
     effective_status = parsed.get("status") or reading.status
     observation_summary = "all parameters within range"
