@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import sim_bridge
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 SENSORS_FILE = BASE_DIR / "sensors" / "pod_states.json"
 PODS_PER_TABLE = max(1, int(os.getenv("PODS_PER_TABLE", "100")))
+
 
 
 @dataclass
@@ -28,10 +30,6 @@ class SensorReading:
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-def _table_id_for_index(pod_index: int) -> str:
-    return f"T{pod_index // PODS_PER_TABLE + 1}"
-
-
 def read_all() -> dict[str, SensorReading]:
     if not SENSORS_FILE.exists():
         return {}
@@ -40,32 +38,28 @@ def read_all() -> dict[str, SensorReading]:
     except (json.JSONDecodeError, OSError):
         return {}
 
-    tables: dict[str, list[dict]] = {}
-    for i, pod in enumerate(pods):
-        tid = _table_id_for_index(i)
-        tables.setdefault(tid, []).append(pod)
+    pods_by_id = {pod.get("id"): pod for pod in pods}
 
     readings: dict[str, SensorReading] = {}
-    for tid, table_pods in tables.items():
-        ph_vals = [p["ph"] for p in table_pods]
-        ec_vals = [p["ec_ppm"] for p in table_pods]
-        temp_vals = [p["temp_c"] for p in table_pods]
-        lux_vals = [p["light_lux"] for p in table_pods]
+    for zone_id in sim_bridge.get_all_zone_ids():
+        pod = pods_by_id.get(zone_id)
+        if pod is None:
+            continue
 
-        critical = sum(1 for p in table_pods if p.get("status") == "critical")
-        warning = sum(1 for p in table_pods if p.get("status") == "warning")
-        healthy = sum(1 for p in table_pods if p.get("status") == "healthy")
-        faults = [p["fault_type"] for p in table_pods if p.get("fault_type", "none") != "none"]
+        critical = 1 if pod.get("status") == "critical" else 0
+        warning = 1 if pod.get("status") == "warning" else 0
+        healthy = 1 if pod.get("status") == "healthy" else 0
+        faults = [pod["fault_type"]] if pod.get("fault_type", "none") != "none" else []
 
         status = "critical" if critical > 0 else ("warning" if warning > 0 else "healthy")
 
-        readings[tid] = SensorReading(
-            zone_id=tid,
-            pod_ids=[p["id"] for p in table_pods],
-            avg_ph=round(sum(ph_vals) / len(ph_vals), 3),
-            avg_ec_ppm=round(sum(ec_vals) / len(ec_vals), 1),
-            avg_temp_c=round(sum(temp_vals) / len(temp_vals), 2),
-            avg_light_lux=round(sum(lux_vals) / len(lux_vals), 1),
+        readings[zone_id] = SensorReading(
+            zone_id=zone_id,
+            pod_ids=[pod["id"]],
+            avg_ph=round(pod["ph"], 3),
+            avg_ec_ppm=round(pod["ec_ppm"], 1),
+            avg_temp_c=round(pod["temp_c"], 2),
+            avg_light_lux=round(pod["light_lux"], 1),
             critical_count=critical,
             warning_count=warning,
             healthy_count=healthy,

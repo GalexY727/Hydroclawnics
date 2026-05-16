@@ -7,7 +7,7 @@ import { deriveStage, deriveHealth } from '../../hooks/useFarm3D'
 function podIndexFromId(id) {
   if (!id) return 0
   const m = id.match(/(\d+)/)
-  if (m) return (parseInt(m[1], 10) - 1) % 20
+  if (m) return parseInt(m[1], 10) - 1
   const c = id.match(/([A-Z])/i)
   if (c) return c[1].toUpperCase().charCodeAt(0) - 65
   return 0

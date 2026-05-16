@@ -11,6 +11,11 @@ from typing import Awaitable, Callable
 
 import state
 
+try:
+    from hydroclawnics.sim_config import CROP_ORDER, POD_COUNT
+except ModuleNotFoundError:
+    from sim_config import CROP_ORDER, POD_COUNT
+
 BASE_DIR = Path(__file__).resolve().parent
 SENSORS_FILE = BASE_DIR / "sensors" / "pod_states.json"
 
@@ -35,6 +40,12 @@ CROPS: dict[str, dict[str, tuple[float, float]]] = {
         "ec_ppm": (800.0, 1200.0),
         "temp_c": (18.0, 24.0),
         "light_lux": (14000.0, 18000.0),
+    },
+    "tomato": {
+        "ph": (5.5, 6.5),
+        "ec_ppm": (1400.0, 3500.0),
+        "temp_c": (20.0, 26.0),
+        "light_lux": (20000.0, 40000.0),
     },
     "basil": {
         "ph": (5.8, 6.6),
@@ -117,12 +128,12 @@ class SimulatorEngine:
     def _init_pods(self) -> list[Pod]:
         crops = ["lettuce", "basil", "spinach", "tomato"]
         pods: list[Pod] = []
-        for i in range(20):
-            crop = crops[i % len(crops)]
+        for i in range(POD_COUNT):
+            crop = CROP_ORDER[i % len(CROP_ORDER)]
             ranges = CROPS[crop]
             pods.append(
                 Pod(
-                    id=f"pod_{i + 1:02d}",
+                    id=f"pod_{i + 1:03d}",
                     crop=crop,
                     ph=random.uniform(*ranges["ph"]),
                     ec_ppm=random.uniform(*ranges["ec_ppm"]),

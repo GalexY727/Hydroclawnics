@@ -5,6 +5,11 @@ import random
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 
+try:
+    from hydroclawnics.sim_config import CROP_ORDER, POD_COUNT
+except ModuleNotFoundError:
+    from sim_config import CROP_ORDER, POD_COUNT
+
 _state: dict[str, _ZoneState] = {}
 _tick_task: asyncio.Task | None = None  # type: ignore[type-arg]
 
@@ -143,6 +148,19 @@ class _ZoneState:
     last_updated: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
+def _init_state() -> dict[str, _ZoneState]:
+    return {
+        f"pod_{i:03d}": _ZoneState(
+            zone_id=f"pod_{i:03d}",
+            crop=CROP_ORDER[(i - 1) % len(CROP_ORDER)],
+        )
+        for i in range(1, POD_COUNT + 1)
+    }
+
+
+_state.update(_init_state())
+
+
 def _get_zone(zone_id: str) -> _ZoneState:
     if zone_id not in _state:
         crop = ZONE_CROP_MAP.get(zone_id, "lettuce")
@@ -165,6 +183,10 @@ def _get_zone(zone_id: str) -> _ZoneState:
         zone.plant_status, zone.fault_type = _evaluate_zone(zone)
         _state[zone_id] = zone
     return _state[zone_id]
+
+
+def get_all_zone_ids() -> list[str]:
+    return list(_state.keys())
 
 
 def execute_command(tool_name: str, params: dict) -> dict:

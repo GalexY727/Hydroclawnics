@@ -14,9 +14,7 @@ export function deriveHealth(status) {
 }
 
 function gridColumns(count) {
-  if (count <= 20) return 5
-  if (count <= 64) return 8
-  return 10
+  return Math.max(1, Math.ceil(Math.sqrt(count)))
 }
 
 export default function useFarm3D(pods) {
