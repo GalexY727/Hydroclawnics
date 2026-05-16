@@ -145,3 +145,6 @@ vite.config.ts.timestamp-*
 # Python
 __pycache__/
 *.py[cod]
+
+
+pod_states.json
