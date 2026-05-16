@@ -39,34 +39,42 @@ def read_all() -> dict[str, SensorReading]:
     except (json.JSONDecodeError, OSError):
         return {}
 
-    pods_by_id = {pod.get("id"): pod for pod in pods}
+    # Group pods by zone — pod IDs are prefixed with zone_id (e.g. "T1_pod001")
+    pods_by_zone: dict[str, list[dict]] = {}
+    for pod in pods:
+        pod_id = pod.get("id", "")
+        zone = pod.get("zone_id") or pod.get("table_id") or pod_id.split("_")[0]
+        pods_by_zone.setdefault(zone, []).append(pod)
 
     readings: dict[str, SensorReading] = {}
     for zone_id in sim_bridge.get_all_zone_ids():
-        pod = pods_by_id.get(zone_id)
-        if pod is None:
+        zone_pods = pods_by_zone.get(zone_id, [])
+        if not zone_pods:
             continue
 
-        critical = 1 if pod.get("status") == "critical" else 0
-        warning = 1 if pod.get("status") == "warning" else 0
-        healthy = 1 if pod.get("status") == "healthy" else 0
-        faults = [pod["fault_type"]] if pod.get("fault_type", "none") != "none" else []
+        critical = sum(1 for p in zone_pods if p.get("status") == "critical")
+        warning  = sum(1 for p in zone_pods if p.get("status") == "warning")
+        healthy  = sum(1 for p in zone_pods if p.get("status") == "healthy")
+        faults   = list({p["fault_type"] for p in zone_pods if p.get("fault_type", "none") != "none"})
+        status   = "critical" if critical > 0 else ("warning" if warning > 0 else "healthy")
 
-        status = "critical" if critical > 0 else ("warning" if warning > 0 else "healthy")
+        def _avg(key: str, z: list[dict] = zone_pods) -> float:
+            vals = [p[key] for p in z if key in p]
+            return round(sum(vals) / len(vals), 3) if vals else 0.0
 
         readings[zone_id] = SensorReading(
             zone_id=zone_id,
-            pod_ids=[pod["id"]],
-            avg_ph=round(pod["ph"], 3),
-            avg_ec_ppm=round(pod["ec_ppm"], 1),
-            avg_temp_c=round(pod["temp_c"], 2),
-            avg_light_lux=round(pod["light_lux"], 1),
+            pod_ids=[p["id"] for p in zone_pods],
+            avg_ph=_avg("ph"),
+            avg_ec_ppm=round(_avg("ec_ppm"), 1),
+            avg_temp_c=round(_avg("temp_c"), 2),
+            avg_light_lux=round(_avg("light_lux"), 1),
             critical_count=critical,
             warning_count=warning,
             healthy_count=healthy,
             status=status,
             fault_types=faults,
-            pods=table_pods,
+            pods=zone_pods[:PODS_PER_TABLE],
         )
 
     return readings
