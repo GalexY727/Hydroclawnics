@@ -29,10 +29,13 @@ Rules:
 - Always explain your reasoning before calling a tool
 - Never run heater and cooler simultaneously in the same zone
 - Prefer conservative actions first (adjust fan speed before toggling on/off)
-- When a directive arrives from the farm supervisor, acknowledge and comply \
-unless an emergency response is already in progress
-- If all readings are within range, report healthy status and do NOT call tools
-- Critical faults (ph_crash, heat_stress) take absolute priority\
+- Critical faults (ph_crash, heat_stress) take absolute priority
+- When a directive arrives from the farm supervisor, you MUST acknowledge and \
+act on it by calling the appropriate tool(s), even if local readings appear \
+healthy. Directives represent farm-wide context you cannot see locally. \
+The only exception is if an active emergency response is already in progress.
+- If all readings are within range AND there are no pending supervisor \
+directives, report healthy status and do NOT call tools\
 """
 
 _TABLE_AGENT_MODEL = os.getenv("TABLE_AGENT_MODEL", "nvidia/nemotron-3-nano-30b-a3b")
@@ -58,17 +61,21 @@ def _build_prompt(
         lines.append(f"Active faults: {', '.join(reading.fault_types)}")
 
     if directives:
-        lines.append("\n## Pending Supervisor Directives")
+        lines.append("\n## PENDING SUPERVISOR DIRECTIVES — YOU MUST ACT ON THESE")
         for d in directives:
             lines.append(
                 f"- [{d.get('priority', 'normal').upper()}] "
                 f"{d.get('action', '')}: {d.get('reasoning', '')}"
             )
-
-    lines.append(
-        "\nAnalyze the sensor data and any directives. "
-        "Call tools to correct issues, then confirm zone status."
-    )
+        lines.append(
+            "\nThe supervisor has issued the above directive(s). "
+            "Call the appropriate tool(s) to carry them out, then confirm completion."
+        )
+    else:
+        lines.append(
+            "\nAnalyze the sensor data. "
+            "Call tools to correct any issues, then confirm zone status."
+        )
     return "\n".join(lines)
 
 
