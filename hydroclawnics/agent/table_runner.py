@@ -270,9 +270,7 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
         response = await client.chat.completions.create(
             model=_TABLE_AGENT_MODEL,
             messages=messages,
-            tools=tools,
-            tool_choice="auto",
-            temperature=0.3,
+            temperature=0.2,
             max_tokens=512,
         )
         if response.choices[0].finish_reason == "length":
