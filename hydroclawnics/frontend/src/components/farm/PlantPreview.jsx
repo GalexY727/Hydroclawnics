@@ -1,4 +1,4 @@
-import { Suspense } from 'react'
+import { Suspense, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import PodMesh from './PodMesh'
@@ -13,7 +13,7 @@ function podIndexFromId(id) {
   return 0
 }
 
-function PreviewScene({ pod }) {
+function PreviewScene({ pod, autoRotate, onOrbitStart }) {
   const podIndex = podIndexFromId(pod.id)
   const mockMappedPod = {
     pod_id: pod.id,
@@ -30,9 +30,10 @@ function PreviewScene({ pod }) {
       <directionalLight position={[2, 2, -2]} intensity={0.4} />
       <PodMesh pod={mockMappedPod} podIndex={podIndex} preview />
       <OrbitControls
-        autoRotate
-        autoRotateSpeed={0.5}
+        autoRotate={autoRotate}
+        autoRotateSpeed={0.25}
         enableZoom={false}
+        onStart={onOrbitStart}
         target={[0, 0.18, 0]}
       />
     </>
@@ -40,6 +41,8 @@ function PreviewScene({ pod }) {
 }
 
 export default function PlantPreview({ pod }) {
+  const [autoRotate, setAutoRotate] = useState(true)
+
   if (!pod) return null
   return (
     <div
@@ -51,8 +54,8 @@ export default function PlantPreview({ pod }) {
           Loading preview...
         </div>
       }>
-        <Canvas camera={{ position: [0.7, 0.45, 1.15], fov: 52 }}>
-          <PreviewScene pod={pod} />
+        <Canvas camera={{ position: [0.7, 0.45, 1.15], fov: 52 }} onPointerDown={() => setAutoRotate(false)}>
+          <PreviewScene pod={pod} autoRotate={autoRotate} onOrbitStart={() => setAutoRotate(false)} />
         </Canvas>
       </Suspense>
     </div>
