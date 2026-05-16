@@ -367,14 +367,13 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
         actions_taken = [
             alog.sanitize_action({
                 "zone_id": table_id,
-                "pod_id": pod.get("id", table_id),
+                "pod_id": table_id,
                 "tool": "no_op",
                 "params": {},
                 "reason": observation_summary,
-                "status": pod.get("status") or effective_status,
+                "status": effective_status,
                 "cycle_id": cycle_id,
             })
-            for pod in (reading.pods or [{"id": table_id, "status": effective_status}])
         ]
 
     # One structured cycle entry — this is what gets broadcast to the frontend
