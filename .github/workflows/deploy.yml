@@ -8,12 +8,13 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-    - name: Install and deploy via brev
-      env:
-        BREV_API_KEY: ${{ secrets.BREV_API_KEY }}
-        NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-      run: |
-        curl -fsSL https://raw.githubusercontent.com/brevdev/brev-cli/main/bin/install-latest.sh | sudo bash
-        export PATH=$PATH:/usr/local/bin:$HOME/.local/bin:/root/.local/bin
-        brev login --api-key $BREV_API_KEY
-        brev exec your-instance-name -- "cd /home/ubuntu/Hydroclawnics-Simulation && git pull origin main && NVIDIA_API_KEY=$NVIDIA_API_KEY bash deploy.sh"
+      - name: Install and deploy via brev
+        env:
+          BREV_API_KEY: ${{ secrets.BREV_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/brevdev/brev-cli/main/bin/install-latest.sh | sudo bash
+          export PATH="${HOME}/.local/bin:/usr/local/bin:/root/.local/bin:${PATH}"
+          which brev || echo "still not found at $(find / -name brev -type f 2>/dev/null | head -3)"
+          brev login --api-key $BREV_API_KEY
+          brev exec hydroclawnics -- "cd /home/ubuntu/Hydroclawnics-Simulation && git pull origin main && NVIDIA_API_KEY=$NVIDIA_API_KEY bash deploy.sh"
