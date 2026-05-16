@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -202,9 +203,9 @@ async def post_action(request: Request) -> dict:
 async def agent_status() -> dict:
     import os as _os
     from agent import message_bus as _mb
-    pods_per_table = int(_os.getenv("PODS_PER_TABLE", "5"))
+    pods_per_table = max(1, int(_os.getenv("PODS_PER_TABLE", "100")))
     total_pods = len(engine.pods)
-    table_count = total_pods // pods_per_table
+    table_count = max(1, math.ceil(total_pods / pods_per_table))
     table_ids = [f"T{i + 1}" for i in range(table_count)]
     last_cycles = _mb.get_table_last_cycles()
     return {

@@ -8,7 +8,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 SENSORS_FILE = BASE_DIR / "sensors" / "pod_states.json"
-PODS_PER_TABLE = int(os.getenv("PODS_PER_TABLE", "5"))
+PODS_PER_TABLE = max(1, int(os.getenv("PODS_PER_TABLE", "100")))
 
 
 @dataclass

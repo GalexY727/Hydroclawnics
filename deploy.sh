@@ -6,8 +6,8 @@ APP_DIR="$REPO_DIR/hydroclawnics"
 VENV="$APP_DIR/.venv"
 PYTHON="$VENV/bin/python3"
 LOG_DIR="$APP_DIR/logs"
-PODS_PER_TABLE="${PODS_PER_TABLE:-5}"
-TOTAL_PODS=20
+PODS_PER_TABLE="${PODS_PER_TABLE:-100}"
+TOTAL_PODS="${TOTAL_PODS:-20}"
 
 echo "=== Hydroclawnics deploy ==="
 
@@ -63,7 +63,10 @@ nohup "$VENV/bin/uvicorn" main:app --host 0.0.0.0 --port 8000 \
 echo "  backend PID $!"
 sleep 2  # give backend time to init DB
 
-TABLE_COUNT=$(( TOTAL_PODS / PODS_PER_TABLE ))
+TABLE_COUNT=$(( (TOTAL_PODS + PODS_PER_TABLE - 1) / PODS_PER_TABLE ))
+if [[ "$TABLE_COUNT" -lt 1 ]]; then
+  TABLE_COUNT=1
+fi
 echo "Starting $TABLE_COUNT table agents (PODS_PER_TABLE=$PODS_PER_TABLE)..."
 for i in $(seq 1 "$TABLE_COUNT"); do
   TABLE_ID="T$i"
