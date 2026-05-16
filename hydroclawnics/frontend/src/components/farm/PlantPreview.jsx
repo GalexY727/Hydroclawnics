@@ -17,6 +17,7 @@ function PreviewScene({ pod, autoRotate, onOrbitStart }) {
   const podIndex = podIndexFromId(pod.id)
   const mockMappedPod = {
     pod_id: pod.id,
+    crop: pod.crop,
     status: pod.status,
     age_hours: Number(pod.age_hours) || 0,
     stage: deriveStage(pod.age_hours),

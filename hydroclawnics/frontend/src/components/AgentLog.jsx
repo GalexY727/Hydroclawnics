@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import CropIcon from './CropIcon'
 
 const REASONING_PREVIEW_CHARS = 150
 
@@ -40,6 +41,7 @@ export default function AgentLog({ entries, pods = {} }) {
             const isExpanded = Boolean(expanded[key])
             const shouldTruncate = reasoning.length > REASONING_PREVIEW_CHARS
             const visibleReasoning = isExpanded || !shouldTruncate ? reasoning : `${reasoning.slice(0, REASONING_PREVIEW_CHARS)}`
+            const crop = entry.pod_id ? pods[entry.pod_id]?.crop : null
 
             return (
               <article key={key} className="log-entry border-b py-3 first:pt-0 last:border-b-0" style={{ borderColor: 'var(--color-border)' }}>
@@ -53,7 +55,8 @@ export default function AgentLog({ entries, pods = {} }) {
                   <span className="text-xs" style={{ color: 'var(--color-muted)' }}>
                     {formatTime(entry.timestamp)}
                   </span>
-                  <span className="rounded-full px-2 py-0.5 text-xs font-semibold" style={{ background: 'var(--color-surface-2)', color: 'var(--color-muted)' }}>
+                  <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold" style={{ background: 'var(--color-surface-2)', color: 'var(--color-muted)' }}>
+                    {crop ? <CropIcon crop={crop} className="h-3.5 w-3.5" /> : null}
                     {entry.pod_id || 'pod'}
                   </span>
                 </div>

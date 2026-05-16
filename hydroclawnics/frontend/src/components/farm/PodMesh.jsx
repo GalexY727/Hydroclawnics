@@ -3,13 +3,15 @@ import { Text } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { createPlantMesh, PLANT_TYPES } from '../../lib/plantMesh'
+import { normalizeCropName } from '../../lib/cropAssets'
 
 export default function PodMesh({ pod, onPodSelect, podIndex = 0 }) {
   const plantRef = useRef()
   const isAlerted = pod.status === 'warning' || pod.status === 'critical'
   const stage = pod.stage ?? 1
   const health = pod.health ?? 0.8
-  const plantType = PLANT_TYPES[podIndex % PLANT_TYPES.length]
+  const cropType = normalizeCropName(pod.crop)
+  const plantType = PLANT_TYPES.includes(cropType) ? cropType : PLANT_TYPES[podIndex % PLANT_TYPES.length]
 
   const plantGroup = useMemo(() => {
     const group = createPlantMesh(stage, health, plantType)

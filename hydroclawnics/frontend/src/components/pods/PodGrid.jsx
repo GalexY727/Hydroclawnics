@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import PhysicalPot from './PhysicalPot'
 import usePodGrid from '../../hooks/usePodGrid'
+import CropIcon from '../CropIcon'
 
 const SORT_OPTIONS = [
   { value: 'status',     label: 'Status (critical first)' },
@@ -28,8 +29,6 @@ const STATUS_BG = {
   critical: '#1c1620',
 }
 
-const CROP_EMOJI = { basil: '🌱', lettuce: '🥬', spinach: '🍃' }
-
 function PodCard({ pod, onSelect }) {
   const borderColor = STATUS_BORDER[pod.status] || STATUS_BORDER.healthy
   const bg = STATUS_BG[pod.status] || 'var(--color-surface)'
@@ -49,8 +48,13 @@ function PodCard({ pod, onSelect }) {
       }}
     >
       <div className="p-2.5">
-        <div className="mb-0.5 text-[9px] font-bold uppercase tracking-[0.08em]" style={{ color: 'var(--color-muted)' }}>
-          {pod.crop ? `${CROP_EMOJI[pod.crop] || ''} ${pod.crop}` : '—'}
+        <div className="mb-0.5 flex min-w-0 items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.08em]" style={{ color: 'var(--color-muted)' }}>
+          {pod.crop ? (
+            <>
+              <CropIcon crop={pod.crop} className="h-4 w-4" />
+              <span className="truncate">{pod.crop}</span>
+            </>
+          ) : '—'}
         </div>
         <div className="mb-1.5 flex items-baseline justify-between gap-1">
           <span className="text-[12px] font-bold leading-none" style={{ color: 'var(--color-text)' }}>
@@ -73,10 +77,10 @@ function PodCard({ pod, onSelect }) {
             ['°C',  (Number(pod.air_temp_c) || 0).toFixed(1)],
             ['RH',  `${Math.round(Number(pod.humidity) || 0)}%`],
           ]).map(([label, val]) => (
-            <>
-              <span key={`l-${label}`} className="text-[9px]" style={{ color: 'var(--color-muted)' }}>{label}</span>
-              <span key={`v-${label}`} className="text-right font-mono text-[10px] font-semibold" style={{ color: 'var(--color-text)' }}>{val}</span>
-            </>
+            <div key={label} className="contents">
+              <span className="text-[9px]" style={{ color: 'var(--color-muted)' }}>{label}</span>
+              <span className="text-right font-mono text-[10px] font-semibold" style={{ color: 'var(--color-text)' }}>{val}</span>
+            </div>
           ))}
         </div>
 
@@ -152,7 +156,10 @@ function Toolbar({ grid, cropTypes }) {
             borderColor: cropFilter.includes(crop) ? 'var(--color-info)' : 'var(--color-border)',
           }}
         >
-          {CROP_EMOJI[crop] || ''} {crop}
+          <span className="inline-flex items-center gap-1.5">
+            <CropIcon crop={crop} className="h-4 w-4" />
+            <span>{crop}</span>
+          </span>
         </button>
       ))}
 
