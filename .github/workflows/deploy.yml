@@ -1,0 +1,20 @@
+name: Deploy to brev
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to brev instance
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.BREV_HOST }}
+          username: ${{ secrets.BREV_USER }}
+          key: ${{ secrets.BREV_SSH_PRIVATE_KEY }}
+          envs: NVIDIA_API_KEY
+          script: |
+            export NVIDIA_API_KEY="${{ secrets.NVIDIA_API_KEY }}"
+            bash /home/ubuntu/your-repo/deploy.sh
