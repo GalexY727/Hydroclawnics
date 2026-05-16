@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 import agent_bridge
 import state
-from simulator import SENSORS_FILE, SimulatorEngine, inject_fault
+from simulator import CROPS, SENSORS_FILE, SimulatorEngine, inject_fault
 
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
@@ -54,6 +54,67 @@ engine = SimulatorEngine()
 clients: set[WebSocket] = set()
 client_locks: dict[WebSocket, asyncio.Lock] = {}
 bridge_task: asyncio.Task | None = None
+
+
+def _apply_agent_tool_to_pod(tool: str, params: dict) -> bool:
+    pod_id = params.get("pod_id", "")
+    pod = next((candidate for candidate in engine.pods if candidate.id == pod_id), None)
+    if pod is None:
+        return False
+
+    ranges = CROPS.get(pod.crop, CROPS["lettuce"])
+
+    def midpoint(metric: str) -> float:
+        lo, hi = ranges[metric]
+        return (lo + hi) / 2.0
+
+    if tool == "dose_acid":
+        amount_ml = float(params.get("amount_ml", 10))
+        pod.ph = max(4.0, pod.ph - amount_ml * 0.02)
+        if pod.fault_type in {"ph_high"} or pod.ph > ranges["ph"][1]:
+            pod.ph = midpoint("ph")
+        pod.last_action = tool
+    elif tool == "dose_base":
+        amount_ml = float(params.get("amount_ml", 10))
+        pod.ph = min(9.0, pod.ph + amount_ml * 0.02)
+        if pod.fault_type in {"ph_crash", "ph_low"} or pod.ph < ranges["ph"][0]:
+            pod.ph = midpoint("ph")
+        pod.last_action = tool
+    elif tool == "dose_nutrients":
+        amount_ml = float(params.get("amount_ml", 50))
+        pod.ec_ppm = min(5000.0, pod.ec_ppm + amount_ml * 1.0)
+        if pod.fault_type in {"nutrient_low", "ec_low"} or pod.ec_ppm < ranges["ec_ppm"][0]:
+            pod.ec_ppm = midpoint("ec_ppm")
+        pod.last_action = tool
+    elif tool == "flush_reservoir":
+        flush_pct = float(params.get("flush_percent", 20)) / 100.0
+        pod.ec_ppm = max(100.0, pod.ec_ppm * (1.0 - flush_pct))
+        if pod.fault_type in {"nutrient_spike", "ec_high"} or pod.ec_ppm > ranges["ec_ppm"][1]:
+            pod.ec_ppm = midpoint("ec_ppm")
+        pod.last_action = tool
+    elif tool in {"turn_fan_on", "set_fan_speed", "turn_cooler_on", "enter_heat_stress_mode"}:
+        pod.temp_c = max(12.0, pod.temp_c - 4.0)
+        if pod.fault_type in {"heat_stress", "temp_high"} or pod.temp_c > ranges["temp_c"][1]:
+            pod.temp_c = midpoint("temp_c")
+        pod.last_action = tool
+    elif tool in {"turn_heater_on"}:
+        pod.temp_c = min(40.0, pod.temp_c + 4.0)
+        pod.last_action = tool
+    else:
+        return False
+
+    from simulator import compute_status
+    pod.status = compute_status(pod)
+    if pod.status == "healthy":
+        pod.fault_type = "none"
+    return True
+
+
+async def _publish_engine_snapshot() -> None:
+    payload = engine.snapshot()
+    SENSORS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    SENSORS_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    await broadcast({"type": "pod_update", "pods": payload})
 
 
 def remove_client(client: WebSocket) -> None:
@@ -178,10 +239,7 @@ async def post_fault(pod_id: str, body: FaultRequest) -> dict:
     for pod in engine.pods:
         if pod.id == pod_id:
             inject_fault(pod, body.fault)
-            payload = engine.snapshot()
-            SENSORS_FILE.parent.mkdir(parents=True, exist_ok=True)
-            SENSORS_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-            await broadcast({"type": "pod_update", "pods": payload})
+            await _publish_engine_snapshot()
             return {"ok": True, "pod": pod_id, "fault": body.fault}
     raise HTTPException(status_code=404, detail="Pod not found")
 
@@ -194,6 +252,11 @@ async def post_action(request: Request) -> dict:
         return {"ok": False, "error": "invalid JSON"}
     state.append_decision(entry)
     if entry.get("type") in {"agent_cycle_summary", "pod_agent_update", "agent_action"}:
+        if entry.get("type") == "agent_action":
+            tool = entry.get("tool", "")
+            params = entry.get("params") or {}
+            if tool != "no_op" and isinstance(params, dict) and _apply_agent_tool_to_pod(tool, params):
+                await _publish_engine_snapshot()
         if entry.get("type") == "pod_agent_update":
             from agent import action_log as _alog
             await _alog.remember_pod_action(entry)

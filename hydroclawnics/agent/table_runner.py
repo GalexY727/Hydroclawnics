@@ -105,6 +105,19 @@ _TABLE_AGENT_MODEL = os.getenv("TABLE_AGENT_MODEL", "nvidia/nemotron-3-nano-30b-
 _TABLE_INTERVAL_S = int(os.getenv("TABLE_INTERVAL_S", "20"))
 _NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
+_FAULT_REPAIR_TOOLS: dict[str, tuple[str, dict]] = {
+    "ph_crash": ("dose_base", {"amount_ml": 25}),
+    "ph_low": ("dose_base", {"amount_ml": 15}),
+    "ph_high": ("dose_acid", {"amount_ml": 15}),
+    "nutrient_spike": ("flush_reservoir", {"flush_percent": 30}),
+    "ec_high": ("flush_reservoir", {"flush_percent": 30}),
+    "nutrient_low": ("dose_nutrients", {"amount_ml": 100}),
+    "ec_low": ("dose_nutrients", {"amount_ml": 100}),
+    "heat_stress": ("enter_heat_stress_mode", {}),
+    "temp_high": ("enter_heat_stress_mode", {}),
+    "humidity_high": ("enter_high_humidity_mode", {}),
+}
+
 
 def _build_prompt(
     table_id: str,
@@ -131,7 +144,10 @@ def _build_prompt(
     ]
 
     if reading.fault_types:
-        lines.append(f"Faults: {', '.join(reading.fault_types)}")
+        lines.append(
+            f"ACTIVE SIMULATED FAULTS: {', '.join(reading.fault_types)}. "
+            "These override apparently-normal averages; do not return no_op until each faulted pod has a corrective action."
+        )
 
     if reading.pods:
         lines.append(
@@ -141,12 +157,17 @@ def _build_prompt(
         for pod in reading.pods:
             age_h = round(pod.get("age_hours", 0.0), 1)
             plant_h_cm = round(age_h * 0.05, 1)
+            fault = pod.get("fault_type", "none")
+            status = pod.get("status", "?")
+            action_hint = ""
+            if fault != "none" or status in {"warning", "critical"}:
+                action_hint = " | REPAIR REQUIRED"
             lines.append(
                 f"  {pod.get('id','?')} | {pod.get('crop', crop)} | "
-                f"{pod.get('status','?')} | {pod.get('fault_type','none')} | "
+                f"{status} | {fault} | "
                 f"ph={pod.get('ph','?')} | ec={pod.get('ec_ppm','?')} | "
                 f"air_temp={pod.get('temp_c','?')}°C | lux={pod.get('light_lux','?')} | "
-                f"age={age_h}h | height={plant_h_cm}cm | {zone_ts}"
+                f"age={age_h}h | height={plant_h_cm}cm | {zone_ts}{action_hint}"
             )
 
     if directives:
@@ -166,6 +187,43 @@ def _build_prompt(
         )
 
     return "\n".join(lines)
+
+
+def _fallback_fault_actions(reading: sensor_poller.SensorReading, cycle_id: str) -> list[dict]:
+    """Repair obvious simulated faults if the model failed to call tools."""
+    actions_taken: list[dict] = []
+    for pod in reading.pods:
+        fault = pod.get("fault_type", "none")
+        status = pod.get("status", "healthy")
+        if fault == "none" and status not in {"warning", "critical"}:
+            continue
+
+        repair = _FAULT_REPAIR_TOOLS.get(fault)
+        if repair is None:
+            continue
+
+        tool_name, default_params = repair
+        params = {"pod_id": pod.get("id") or reading.pod_id, **default_params}
+        result = execute_tool(tool_name, params)
+        action = alog.sanitize_action({
+            "pod_id": params["pod_id"],
+            "tool": tool_name,
+            "params": params,
+            "result": result,
+            "reason": f"Safety fallback repaired active simulated fault {fault}",
+            "status": status if status in ("healthy", "warning", "critical") else reading.status,
+            "cycle_id": cycle_id,
+        })
+        alog.log(
+            agent_type="table",
+            table_id=reading.pod_id,
+            tool=action["tool"],
+            params=action["params"],
+            result=result,
+            reasoning=action["reason"],
+        )
+        actions_taken.append(action)
+    return actions_taken
 
 
 def parse_agent_response(response_text: str) -> dict:
@@ -396,6 +454,16 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
             f"{obs.get('param', '')} {obs.get('flag', '')}".strip()
             for obs in parsed.get("observations", [])
         )
+    if not actions_taken:
+        fallback_actions = _fallback_fault_actions(reading, cycle_id)
+        if fallback_actions:
+            actions_taken.extend(fallback_actions)
+            parsed["observations"] = parsed.get("observations") or [
+                {"param": ft, "value": "", "flag": "active simulated fault"}
+                for ft in reading.fault_types
+            ]
+            parsed["status"] = reading.status
+
     if not actions_taken:
         actions_taken = [
             alog.sanitize_action({
