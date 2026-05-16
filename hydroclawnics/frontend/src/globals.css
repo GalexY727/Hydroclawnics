@@ -1,0 +1,168 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  --color-bg: #0f1419;
+  --color-surface: #1a1f2e;
+  --color-surface-2: #252d3d;
+  --color-text: #f5f1de;
+  --color-muted: #a8a49e;
+  --color-border: #3d4451;
+  --color-success: #7fb069;
+  --color-warning: #d4a373;
+  --color-critical: #c9566b;
+  --color-info: #6fa3d8;
+  --color-neutral: #6a6a6a;
+  --color-hover: rgba(127, 176, 105, 0.1);
+  --color-overlay: rgba(0, 0, 0, 0.7);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+  background: var(--color-bg);
+}
+
+body {
+  min-width: 320px;
+  height: 100vh;
+  margin: 0;
+  overflow: hidden;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-family, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-info);
+  outline-offset: 3px;
+}
+
+#root {
+  height: 100vh;
+}
+
+@media (max-width: 1279px) {
+  body {
+    overflow: auto;
+  }
+}
+
+.calm-card {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+}
+
+.calm-card:hover {
+  background: var(--color-surface-2);
+}
+
+.typewriter {
+  display: inline-block;
+  animation: typewriter-text 1.5s steps(54, end) forwards;
+  clip-path: inset(0 100% 0 0);
+}
+
+.connection-dot {
+  animation: connection-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes typewriter-text {
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes connection-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 1;
+  }
+}
+
+/* Tabular numbers — prevents layout jitter on live metric updates */
+.font-mono,
+[class*="font-mono"] {
+  font-feature-settings: 'tnum';
+}
+
+/* Tab content fade + lift */
+@keyframes tab-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.tab-enter {
+  animation: tab-enter 150ms ease forwards;
+}
+
+/* Modal scale-in */
+@keyframes modal-enter {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.modal-enter {
+  animation: modal-enter 200ms ease forwards;
+}
+
+/* Status badge pulse (triggered by React key change) */
+@keyframes badge-pop {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+.badge-pop {
+  animation: badge-pop 300ms ease;
+}
+
+/* Agent log entry slide-in */
+@keyframes log-slide-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.log-entry {
+  animation: log-slide-in 150ms ease forwards;
+}
+
+/* Free-camera HUD chip */
+@keyframes hud-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.hud-chip {
+  animation: hud-fade-in 200ms ease forwards;
+}
+
+/* Collapsible drawer transition */
+.drawer-open {
+  transition: width 250ms ease, opacity 250ms ease;
+}

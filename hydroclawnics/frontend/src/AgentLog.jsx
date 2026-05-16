@@ -2,77 +2,90 @@ import { useState } from 'react'
 
 const REASONING_PREVIEW_CHARS = 150
 
-const actionBorder = {
-  dose_ph_up: 'border-blue-400',
-  dose_ph_down: 'border-blue-400',
-  nutrient: 'border-orange-400',
-  heat: 'border-red-400',
-  alert: 'border-purple-400',
-  default: 'border-slate-500',
-}
-
-function borderForAction(action = '') {
+function colorForAction(action = '') {
   const normalized = action.toLowerCase()
-  if (normalized.includes('dose_ph_up')) return actionBorder.dose_ph_up
-  if (normalized.includes('dose_ph_down')) return actionBorder.dose_ph_down
-  if (normalized.includes('nutrient')) return actionBorder.nutrient
-  if (normalized.includes('heat')) return actionBorder.heat
-  if (normalized.includes('alert')) return actionBorder.alert
-  return actionBorder.default
+  if (normalized.includes('dose_ph_up') || normalized.includes('dose_ph_down')) return 'var(--color-info)'
+  if (normalized.includes('nutrient')) return 'var(--color-warning)'
+  if (normalized.includes('heat')) return 'var(--color-critical)'
+  if (normalized.includes('alert')) return 'var(--color-neutral)'
+  return 'var(--color-muted)'
 }
 
 function formatTime(timestamp) {
   const date = timestamp ? new Date(timestamp) : new Date()
-  if (Number.isNaN(date.getTime())) {
-    return `${timestamp || ''}`.slice(0, 8) || '--:--:--'
-  }
-  return date.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  if (Number.isNaN(date.getTime())) return `${timestamp || ''}`.slice(0, 8) || '--:--'
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
 
-export default function AgentLog({ entries }) {
+const STATUS_DOT_COLOR = { healthy: 'var(--color-success)', warning: 'var(--color-warning)', critical: 'var(--color-critical)' }
+
+export default function AgentLog({ entries, pods = {} }) {
   const [expanded, setExpanded] = useState({})
 
   return (
-    <section className="flex h-full min-h-[720px] flex-col border border-slate-700 bg-slate-900 p-4">
-      <h2 className="mb-3 text-xl font-semibold">Agent Reasoning Feed</h2>
-      <div className="space-y-3 overflow-y-auto pr-1">
-        {entries.map((entry, idx) => {
-          const key = `${entry.timestamp}-${entry.pod_id}-${idx}`
-          const reasoning = `${entry.reasoning || ''}`
-          const isExpanded = Boolean(expanded[key])
-          const shouldTruncate = reasoning.length > REASONING_PREVIEW_CHARS
-          const visibleReasoning = isExpanded || !shouldTruncate ? reasoning : `${reasoning.slice(0, REASONING_PREVIEW_CHARS)}...`
+    <section className="flex h-full min-h-0 flex-col rounded-lg border p-3" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
+      <h2 className="mb-3 shrink-0 text-sm font-medium" style={{ color: 'var(--color-muted)' }}>
+        Agent Reasoning Feed
+      </h2>
 
-          return (
-            <article key={key} className={`border-l-4 bg-slate-800/70 p-3 ${borderForAction(entry.action)}`}>
-              <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-400">
-                <span>{formatTime(entry.timestamp)}</span>
-                <span className="rounded bg-slate-950 px-2 py-0.5 font-semibold text-cyan-200">{entry.pod_id || 'pod'}</span>
-              </div>
-              <div className="text-sm font-bold text-slate-100">{entry.diagnosis || 'Decision received'}</div>
-              <div className="mt-2 inline-flex max-w-full rounded bg-slate-950 px-2 py-1 font-mono text-xs text-orange-200">
-                {entry.action || 'observe'}
-              </div>
-              <p className="mt-2 text-xs leading-5 text-slate-300">
-                {/* # FIX: Animate only the newest reasoning text so older log cards remain readable. */}
-                <span className={idx === 0 ? 'typewriter' : ''}>{visibleReasoning}</span>
-              </p>
-              {shouldTruncate && (
-                <button
-                  type="button"
-                  className="mt-1 text-xs font-semibold text-cyan-300 hover:text-cyan-100"
-                  onClick={() => setExpanded((prev) => ({ ...prev, [key]: !isExpanded }))}
-                >
-                  {isExpanded ? 'Show less' : 'Expand'}
-                </button>
-              )}
-            </article>
-          )
-        })}
-        {entries.length === 0 && (
-          <div className="flex min-h-48 items-center justify-center text-sm text-slate-500">
-            <span className="subtle-pulse">Waiting for agent decisions...</span>
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+        {entries.length === 0 ? (
+          <div className="flex min-h-64 items-center justify-center text-center text-xs italic" style={{ color: 'var(--color-muted)' }}>
+            Waiting for agent decisions...
           </div>
+        ) : (
+          entries.map((entry, idx) => {
+            const key = `${entry.timestamp}-${entry.pod_id}-${idx}`
+            const reasoning = `${entry.reasoning || ''}`
+            const isExpanded = Boolean(expanded[key])
+            const shouldTruncate = reasoning.length > REASONING_PREVIEW_CHARS
+            const visibleReasoning = isExpanded || !shouldTruncate ? reasoning : `${reasoning.slice(0, REASONING_PREVIEW_CHARS)}`
+
+            return (
+              <article key={key} className="log-entry border-b py-3 first:pt-0 last:border-b-0" style={{ borderColor: 'var(--color-border)' }}>
+                <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                  {(() => {
+                    const podStatus = entry.pod_id ? pods[entry.pod_id]?.status : null
+                    return podStatus ? (
+                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: STATUS_DOT_COLOR[podStatus] || STATUS_DOT_COLOR.healthy }} />
+                    ) : null
+                  })()}
+                  <span className="text-xs" style={{ color: 'var(--color-muted)' }}>
+                    {formatTime(entry.timestamp)}
+                  </span>
+                  <span className="rounded-full px-2 py-0.5 text-xs font-semibold" style={{ background: 'var(--color-surface-2)', color: 'var(--color-muted)' }}>
+                    {entry.pod_id || 'pod'}
+                  </span>
+                </div>
+
+                <div className="text-[13px] font-bold leading-5" style={{ color: 'var(--color-text)' }}>
+                  {entry.diagnosis || 'Decision received'}
+                </div>
+
+                <div className="mt-1.5 max-w-full truncate font-mono text-xs" style={{ color: colorForAction(entry.action) }}>
+                  {entry.action || 'observe'}
+                </div>
+
+                <p className="mt-1.5 text-xs leading-5" style={{ color: 'var(--color-muted)' }}>
+                  <span className={idx === 0 ? 'typewriter' : ''}>{visibleReasoning || 'No reasoning supplied.'}</span>
+                  {shouldTruncate && !isExpanded ? (
+                    <>
+                      <span>...</span>{' '}
+                      <button type="button" className="font-semibold" style={{ color: 'var(--color-info)' }} onClick={() => setExpanded((prev) => ({ ...prev, [key]: true }))}>
+                        more
+                      </button>
+                    </>
+                  ) : null}
+                </p>
+
+                {shouldTruncate && isExpanded ? (
+                  <button type="button" className="mt-1 text-xs font-semibold" style={{ color: 'var(--color-info)' }} onClick={() => setExpanded((prev) => ({ ...prev, [key]: false }))}>
+                    less
+                  </button>
+                ) : null}
+              </article>
+            )
+          })
         )}
       </div>
     </section>
