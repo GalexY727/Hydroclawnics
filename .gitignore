@@ -152,3 +152,7 @@ pod_states.json
 # Superpowers brainstorm/visual artifacts
 .superpowers/
 .claude
+
+# Agent SQLite DB and runtime data
+hydroclawnics/db/
+*.db

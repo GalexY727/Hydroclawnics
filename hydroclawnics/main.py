@@ -33,6 +33,12 @@ class ActionRequest(BaseModel):
     reasoning: str
 
 
+class ThoughtRequest(BaseModel):
+    source: str
+    text: str
+    ts: str
+
+
 app = FastAPI(title="Hydroclawnics")
 app.add_middleware(
     CORSMiddleware,
@@ -78,6 +84,8 @@ async def startup_event() -> None:
     global bridge_task
     engine.add_listener(on_tick)
     await engine.start()
+    from agent import message_bus as _mb
+    _mb.init_db()
 
     async def bridge_broadcast(entry: dict) -> None:
         state.append_decision(entry)
@@ -176,6 +184,43 @@ async def post_action(body: ActionRequest) -> dict:
     with agent_bridge.DECISIONS_FILE.open("a", encoding="utf-8") as fp:
         fp.write(json.dumps(entry) + "\n")
     await broadcast({"type": "agent_decision", "entry": entry})
+    return {"ok": True}
+
+
+@app.get("/agent/status")
+async def agent_status() -> dict:
+    import os as _os
+    from agent import message_bus as _mb
+    pods_per_table = int(_os.getenv("PODS_PER_TABLE", "5"))
+    total_pods = len(engine.pods)
+    table_count = total_pods // pods_per_table
+    table_ids = [f"T{i + 1}" for i in range(table_count)]
+    last_cycles = _mb.get_table_last_cycles()
+    return {
+        "supervisor_last_cycle": _mb.get_supervisor_last_cycle(),
+        "table_agents": [
+            {
+                "table_id": tid,
+                "last_cycle": last_cycles.get(tid),
+                "pod_count": pods_per_table,
+            }
+            for tid in table_ids
+        ],
+        "hardware_mode": _os.getenv("HARDWARE_MODE", "false").lower() == "true",
+        "db_path": str(_mb.DB_PATH),
+        "total_tables": table_count,
+    }
+
+
+@app.get("/agent/logs")
+async def agent_logs() -> list[dict]:
+    from agent import message_bus as _mb
+    return _mb.get_recent_actions(50)
+
+
+@app.post("/api/agent/thought")
+async def post_agent_thought(body: ThoughtRequest) -> dict:
+    await broadcast({"type": "agent_thought", "source": body.source, "text": body.text, "ts": body.ts})
     return {"ok": True}
 
 

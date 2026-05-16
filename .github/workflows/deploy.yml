@@ -1,20 +1,25 @@
-name: Deploy to brev
+name: Deploy to Brev
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy
+      - name: Deploy to Brev instance
         env:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          BREV_SSH_PRIVATE_KEY: ${{ secrets.BREV_SSH_PRIVATE_KEY }}
+          BREV_HOST: ${{ secrets.BREV_HOST }}
+          BREV_USER: ${{ secrets.BREV_USER }}
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.BREV_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          echo "$BREV_SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${{ secrets.BREV_HOST }} >> ~/.ssh/known_hosts
-          ssh -i ~/.ssh/deploy_key ${{ secrets.BREV_USER }}@${{ secrets.BREV_HOST }} \
-            "cd /home/ubuntu/Hydroclawnics-Simulation && git pull origin main && NVIDIA_API_KEY=$NVIDIA_API_KEY bash deploy.sh"
+          ssh-keyscan -H "$BREV_HOST" >> ~/.ssh/known_hosts
+
+          ssh -i ~/.ssh/deploy_key "${BREV_USER:-ubuntu}@$BREV_HOST" \
+            "NVIDIA_API_KEY=$NVIDIA_API_KEY bash /home/ubuntu/Hydroclawnics-Simulation/deploy.sh"
