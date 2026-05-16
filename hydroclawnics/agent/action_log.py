@@ -9,6 +9,7 @@ from . import message_bus
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 LOG_FILE = BASE_DIR / "logs" / "agent_actions.jsonl"
+DECISIONS_FILE = BASE_DIR / "memory" / "decisions.jsonl"
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 
@@ -37,6 +38,19 @@ def log(
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
     with LOG_FILE.open("a", encoding="utf-8") as fp:
         fp.write(json.dumps(entry) + "\n")
+
+    decision = {
+        "timestamp": entry["ts"],
+        "pod_id": entry.get("table_id") or "supervisor",
+        "sensor_state": entry.get("params") or {},
+        "diagnosis": entry.get("reasoning") or "",
+        "action": entry["tool"],
+        "reasoning": entry.get("reasoning") or "",
+    }
+    DECISIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with DECISIONS_FILE.open("a", encoding="utf-8") as fp:
+        fp.write(json.dumps(decision) + "\n")
+
     return entry
 
 

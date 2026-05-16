@@ -180,9 +180,6 @@ async def post_fault(pod_id: str, body: FaultRequest) -> dict:
 async def post_action(body: ActionRequest) -> dict:
     entry = body.model_dump()
     state.append_decision(entry)
-    agent_bridge.DECISIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with agent_bridge.DECISIONS_FILE.open("a", encoding="utf-8") as fp:
-        fp.write(json.dumps(entry) + "\n")
     await broadcast({"type": "agent_decision", "entry": entry})
     return {"ok": True}
 
