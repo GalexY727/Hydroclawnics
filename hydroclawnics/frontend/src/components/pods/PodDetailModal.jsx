@@ -1,13 +1,7 @@
 import { useEffect, useMemo } from 'react'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import PlantPreview from '../farm/PlantPreview'
-
-const cropEmoji = {
-  basil: '🌱',
-  lettuce: '🥬',
-  spinach: '🍃',
-  tomato: '🍅',
-}
+import CropIcon from '../CropIcon'
 
 const statusStyles = {
   healthy: { background: 'var(--color-success)', color: 'var(--color-bg)' },
@@ -252,7 +246,11 @@ export default function PodDetailModal({ pod, agentLog = [], onClose }) {
           <div className="min-w-0 flex-1">
             <div className="mb-1 flex min-w-0 flex-wrap items-center gap-2">
               <h2 id="pod-detail-title" className="truncate text-xl font-medium" style={{ color: 'var(--color-text)' }}>
-                {pod.id} {cropEmoji[pod.crop] || '🌱'} {pod.crop}
+                <span className="inline-flex min-w-0 items-center gap-2">
+                  <span>{pod.id}</span>
+                  <CropIcon crop={pod.crop} className="h-6 w-6" />
+                  <span className="truncate">{pod.crop}</span>
+                </span>
               </h2>
               <StatusBadge status={pod.status} />
             </div>

@@ -1,3 +1,5 @@
+import CropIcon from '../CropIcon'
+
 const statusStyles = {
   healthy: { background: 'var(--color-success)', color: 'var(--color-bg)' },
   warning: { background: 'var(--color-warning)', color: 'var(--color-bg)' },
@@ -65,9 +67,18 @@ export default function PhysicalPot({ pods }) {
           <h2 className="text-sm font-medium" style={{ color: 'var(--color-muted)' }}>
             Pot Alpha (Physical)
           </h2>
-          <p className="mt-1 text-xs capitalize" style={{ color: 'var(--color-muted)' }}>
-            {pod ? `${pod.id} · ${pod.crop}` : 'Waiting for live pod data'}
-          </p>
+          {pod ? (
+            <p className="mt-1 flex items-center gap-1.5 text-xs capitalize" style={{ color: 'var(--color-muted)' }}>
+              <span>{pod.id}</span>
+              <span>·</span>
+              <CropIcon crop={pod.crop} className="h-4 w-4" />
+              <span>{pod.crop}</span>
+            </p>
+          ) : (
+            <p className="mt-1 text-xs" style={{ color: 'var(--color-muted)' }}>
+              Waiting for live pod data
+            </p>
+          )}
         </div>
         {pod && (
           <span className="rounded-full px-2.5 py-1 text-xs font-bold uppercase tracking-[0.02em]" style={statusStyles[status] || statusStyles.healthy}>

@@ -48,6 +48,12 @@ CROPS: dict[str, dict[str, tuple[float, float]]] = {
         "temp_c": (16.0, 22.0),
         "light_lux": (12000.0, 17000.0),
     },
+    "tomato": {
+        "ph": (5.8, 6.8),
+        "ec_ppm": (1800.0, 2800.0),
+        "temp_c": (20.0, 26.0),
+        "light_lux": (22000.0, 30000.0),
+    },
 }
 
 
@@ -109,7 +115,7 @@ class SimulatorEngine:
         state.pods = self.pods
 
     def _init_pods(self) -> list[Pod]:
-        crops = ["lettuce", "basil", "spinach"]
+        crops = ["lettuce", "basil", "spinach", "tomato"]
         pods: list[Pod] = []
         for i in range(20):
             crop = crops[i % len(crops)]
