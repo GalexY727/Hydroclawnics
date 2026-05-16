@@ -8,11 +8,123 @@ from datetime import datetime, timezone
 _state: dict[str, _ZoneState] = {}
 _tick_task: asyncio.Task | None = None  # type: ignore[type-arg]
 
+# zone_id → crop name (mirrors table_runner.CROP_MAP)
+ZONE_CROP_MAP: dict[str, str] = {
+    "T1": "lettuce",
+    "T2": "basil",
+    "T3": "tomato",
+    "T4": "spinach",
+}
+
+# Per-crop target ranges: (lo, hi) or (min_val, None) for one-sided
+CROP_TARGETS: dict[str, dict] = {
+    "lettuce": {
+        "water_temp_c": (18.0, 22.0),
+        "air_temp_c":   (18.0, 24.0),
+        "ph":           (6.0,  7.0),
+        "ec_ppm":       (560.0, 840.0),
+        "humidity_pct": (50.0, 70.0),
+        "water_level":  (60.0, None),
+    },
+    "basil": {
+        "water_temp_c": (20.0, 25.0),
+        "air_temp_c":   (21.0, 26.0),
+        "ph":           (5.5,  6.5),
+        "ec_ppm":       (700.0, 1120.0),
+        "humidity_pct": (40.0, 60.0),
+        "water_level":  (60.0, None),
+    },
+    "tomato": {
+        "water_temp_c": (18.0, 24.0),
+        "air_temp_c":   (20.0, 26.0),
+        "ph":           (5.5,  6.5),
+        "ec_ppm":       (1400.0, 3500.0),
+        "humidity_pct": (50.0, 70.0),
+        "water_level":  (65.0, None),
+    },
+    "spinach": {
+        "water_temp_c": (15.0, 20.0),
+        "air_temp_c":   (15.0, 21.0),
+        "ph":           (6.0,  7.0),
+        "ec_ppm":       (1260.0, 1610.0),
+        "humidity_pct": (50.0, 70.0),
+        "water_level":  (60.0, None),
+    },
+}
+
+# Readable param → fault_type suffix used in "param_high" / "param_low"
+_FAULT_PARAM_NAMES: dict[str, str] = {
+    "water_temp_c": "water_temp",
+    "air_temp_c":   "temp",
+    "ph":           "ph",
+    "ec_ppm":       "ec",
+    "humidity_pct": "humidity",
+    "water_level":  "water_level",
+}
+
+
+def _drift_severity(value: float, lo: float, hi: float | None) -> tuple[str | None, str | None]:
+    """Return (severity, direction) or (None, None) if within range.
+
+    For one-sided constraints (hi is None) the span is treated as lo * 0.4
+    so that 10 % / 25 % thresholds scale naturally with the minimum value.
+    """
+    if hi is None:
+        # One-sided: value must be >= lo
+        if value >= lo:
+            return None, None
+        span = lo * 0.4 if lo > 0 else 10.0
+        deficit = (lo - value) / span
+        direction = "low"
+    else:
+        span = hi - lo if hi != lo else 1.0
+        if lo <= value <= hi:
+            return None, None
+        if value < lo:
+            deficit = (lo - value) / span
+            direction = "low"
+        else:
+            deficit = (value - hi) / span
+            direction = "high"
+
+    if deficit > 0.25:
+        return "critical", direction
+    if deficit > 0.10:
+        return "warning", direction
+    return None, None
+
+
+def _evaluate_zone(zone: "_ZoneState") -> tuple[str, str]:
+    """Return (plant_status, fault_type) based on CROP_TARGETS."""
+    targets = CROP_TARGETS.get(zone.crop, CROP_TARGETS["lettuce"])
+    param_values = {
+        "water_temp_c": zone.water_temp_c,
+        "air_temp_c":   zone.temp_c,
+        "ph":           zone.ph,
+        "ec_ppm":       zone.ec_ppm,
+        "humidity_pct": zone.humidity_pct,
+        "water_level":  zone.water_level,
+    }
+    worst_severity: str | None = None
+    worst_fault: str | None = None
+    _order = {"critical": 2, "warning": 1}
+
+    for param, (lo, hi) in targets.items():
+        severity, direction = _drift_severity(param_values[param], lo, hi)
+        if severity and _order.get(severity, 0) > _order.get(worst_severity or "", 0):
+            worst_severity = severity
+            fault_label = _FAULT_PARAM_NAMES.get(param, param)
+            worst_fault = f"{fault_label}_{direction}"
+
+    return (worst_severity or "healthy", worst_fault or "none")
+
 
 @dataclass
 class _ZoneState:
     zone_id: str
+    crop: str = "lettuce"
     temp_c: float = 22.0
+    water_temp_c: float = 20.0
     humidity_pct: float = 65.0
     fan_on: bool = False
     fan_speed: int = 0
@@ -24,6 +136,8 @@ class _ZoneState:
     water_level: float = 75.0
     ph: float = 6.2
     ec_ppm: float = 1000.0
+    plant_status: str = "healthy"
+    fault_type: str = "none"
     target_temp_c: float = 22.0
     target_humidity_percent: float = 65.0
     last_updated: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -31,7 +145,8 @@ class _ZoneState:
 
 def _get_zone(zone_id: str) -> _ZoneState:
     if zone_id not in _state:
-        _state[zone_id] = _ZoneState(zone_id=zone_id)
+        crop = ZONE_CROP_MAP.get(zone_id, "lettuce")
+        _state[zone_id] = _ZoneState(zone_id=zone_id, crop=crop)
     return _state[zone_id]
 
 
@@ -111,26 +226,19 @@ def execute_command(tool_name: str, params: dict) -> dict:
 
 def get_sensor_state(zone_id: str) -> dict:
     zone = _get_zone(zone_id)
-    temp_delta = abs(zone.temp_c - zone.target_temp_c)
-    hum_delta = abs(zone.humidity_pct - zone.target_humidity_percent)
-    health = max(0.0, 1.0 - 0.08 * temp_delta - 0.04 * hum_delta)
-
-    if health < 0.4 or zone.temp_c > 35 or zone.ph < 5.5 or zone.ph > 7.5:
-        status = "critical"
-    elif health < 0.7 or zone.temp_c > 30 or zone.ph < 6.0 or zone.ph > 7.0:
-        status = "warning"
-    else:
-        status = "healthy"
-
     return {
         "zone_id": zone_id,
+        "crop": zone.crop,
         "temp_c": round(zone.temp_c, 2),
+        "air_temp_c": round(zone.temp_c, 2),
+        "water_temp_c": round(zone.water_temp_c, 2),
         "humidity_pct": round(zone.humidity_pct, 2),
         "water_level": round(zone.water_level, 1),
         "ph": round(zone.ph, 2),
         "ec_ppm": round(zone.ec_ppm, 1),
-        "health_score": round(health, 3),
-        "status": status,
+        "plant_status": zone.plant_status,
+        "fault_type": zone.fault_type,
+        "status": zone.plant_status,
         "fan_on": zone.fan_on,
         "fan_speed": zone.fan_speed,
         "vent_open": zone.vent_open,
@@ -159,6 +267,11 @@ async def _tick() -> None:
             else:
                 zone.temp_c += random.gauss(0, 0.15)
 
+            # Water temp tracks air temp with slight lag
+            zone.water_temp_c = max(
+                10.0, min(35.0, zone.water_temp_c + (zone.temp_c - zone.water_temp_c) * 0.05 + random.gauss(0, 0.1))
+            )
+
             if zone.fan_on:
                 fan_factor = zone.fan_speed / 100.0
                 zone.humidity_pct = max(20.0, zone.humidity_pct - random.uniform(0.1, 0.3) * fan_factor)
@@ -172,8 +285,11 @@ async def _tick() -> None:
                 zone.humidity_pct = max(20.0, min(95.0, zone.humidity_pct + random.gauss(0, 0.5)))
 
             zone.ph = max(4.0, min(9.0, zone.ph + random.gauss(0, 0.03)))
-            zone.ec_ppm = max(100.0, min(3000.0, zone.ec_ppm + random.gauss(0, 5.0)))
+            zone.ec_ppm = max(100.0, min(5000.0, zone.ec_ppm + random.gauss(0, 5.0)))
             zone.last_updated = datetime.now(timezone.utc).isoformat()
+
+            # Recompute plant_status and fault_type from CROP_TARGETS
+            zone.plant_status, zone.fault_type = _evaluate_zone(zone)
 
         # Randomly introduce faults ~10% of ticks to simulate real conditions
         if _state and random.random() < 0.1:
@@ -185,6 +301,8 @@ async def _tick() -> None:
                 zone.humidity_pct = max(20.0, zone.humidity_pct - random.uniform(10, 20))
             elif fault == "ph_drift":
                 zone.ph += random.choice([-1, 1]) * random.uniform(0.3, 0.8)
+            # Re-evaluate after injected fault
+            zone.plant_status, zone.fault_type = _evaluate_zone(zone)
 
 
 def start_background_tick() -> None:
