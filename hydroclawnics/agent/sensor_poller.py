@@ -13,7 +13,6 @@ SENSORS_FILE = BASE_DIR / "sensors" / "pod_states.json"
 PODS_PER_TABLE = max(1, int(os.getenv("PODS_PER_TABLE", "100")))
 
 
-
 @dataclass
 class SensorReading:
     zone_id: str
@@ -39,36 +38,35 @@ def read_all() -> dict[str, SensorReading]:
     except (json.JSONDecodeError, OSError):
         return {}
 
-    # Group pods by zone — pod IDs are prefixed with zone_id (e.g. "T1_pod001")
+    # Reverse ZONE_CROP_MAP: crop → zone_id  (e.g. "lettuce" → "T1")
+    crop_to_zone = {crop: zone for zone, crop in sim_bridge.ZONE_CROP_MAP.items()}
+
+    # Group pods by zone using their crop field
     pods_by_zone: dict[str, list[dict]] = {}
     for pod in pods:
-        pod_id = pod.get("id", "")
-        zone = pod.get("zone_id") or pod.get("table_id") or pod_id.split("_")[0]
-        pods_by_zone.setdefault(zone, []).append(pod)
+        zone = crop_to_zone.get(pod.get("crop", ""))
+        if zone:
+            pods_by_zone.setdefault(zone, []).append(pod)
+
+    def _avg(key: str, z: list[dict]) -> float:
+        vals = [p[key] for p in z if key in p]
+        return round(sum(vals) / len(vals), 3) if vals else 0.0
 
     readings: dict[str, SensorReading] = {}
-    for zone_id in sim_bridge.get_all_zone_ids():
-        zone_pods = pods_by_zone.get(zone_id, [])
-        if not zone_pods:
-            continue
-
+    for zone_id, zone_pods in pods_by_zone.items():
         critical = sum(1 for p in zone_pods if p.get("status") == "critical")
         warning  = sum(1 for p in zone_pods if p.get("status") == "warning")
         healthy  = sum(1 for p in zone_pods if p.get("status") == "healthy")
         faults   = list({p["fault_type"] for p in zone_pods if p.get("fault_type", "none") != "none"})
         status   = "critical" if critical > 0 else ("warning" if warning > 0 else "healthy")
 
-        def _avg(key: str, z: list[dict] = zone_pods) -> float:
-            vals = [p[key] for p in z if key in p]
-            return round(sum(vals) / len(vals), 3) if vals else 0.0
-
         readings[zone_id] = SensorReading(
             zone_id=zone_id,
             pod_ids=[p["id"] for p in zone_pods],
-            avg_ph=_avg("ph"),
-            avg_ec_ppm=round(_avg("ec_ppm"), 1),
-            avg_temp_c=round(_avg("temp_c"), 2),
-            avg_light_lux=round(_avg("light_lux"), 1),
+            avg_ph=_avg("ph", zone_pods),
+            avg_ec_ppm=round(_avg("ec_ppm", zone_pods), 1),
+            avg_temp_c=round(_avg("temp_c", zone_pods), 2),
+            avg_light_lux=round(_avg("light_lux", zone_pods), 1),
             critical_count=critical,
             warning_count=warning,
             healthy_count=healthy,

@@ -353,6 +353,8 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
             parsed = {"zone_id": table_id, "status": reading.status, "observations": [], "actions": []}
         else:
             parsed = parse_agent_response(reasoning_text)
+            if parsed.get("status") not in ("healthy", "warning", "critical"):
+                parsed["status"] = reading.status
     cycle_ms = int((time.monotonic() - cycle_start) * 1000)
     effective_status = parsed.get("status") or reading.status
     observation_summary = "all parameters within range"
