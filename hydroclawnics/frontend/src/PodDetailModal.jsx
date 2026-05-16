@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer } from 'recharts'
+import PlantPreview from './PlantPreview'
 
 const cropEmoji = {
   basil: '🌱',
@@ -95,7 +96,7 @@ export default function PodDetailModal({ pod, agentLog = [], onClose }) {
   return (
     <div className="fixed inset-0 z-30 flex items-center justify-center p-4" style={{ background: 'var(--color-overlay)' }} onMouseDown={onClose}>
       <section
-        className="max-h-[92vh] w-full max-w-[600px] overflow-y-auto rounded-lg border p-6 md:p-8"
+        className="modal-enter max-h-[92vh] w-full max-w-[600px] overflow-y-auto rounded-lg border p-6 md:p-8"
         style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}
         onMouseDown={(event) => event.stopPropagation()}
         role="dialog"
@@ -110,6 +111,11 @@ export default function PodDetailModal({ pod, agentLog = [], onClose }) {
               </h2>
               <StatusBadge status={pod.status} />
             </div>
+            {pod.fault_type && pod.fault_type !== 'none' && (
+              <p className="mb-1 text-xs font-semibold" style={{ color: pod.status === 'critical' ? 'var(--color-critical)' : 'var(--color-warning)' }}>
+                Fault: {pod.fault_type}
+              </p>
+            )}
             <p className="text-sm" style={{ color: 'var(--color-muted)' }}>
               Full pod sensor detail
             </p>
@@ -121,13 +127,19 @@ export default function PodDetailModal({ pod, agentLog = [], onClose }) {
           </button>
         </div>
 
+        <PlantPreview pod={pod} />
+
         <div className="grid grid-cols-2 gap-3">
           <ReadingCard label="pH" value={formatReading(pod.ph, 2)} />
           <ReadingCard label="EC" value={`${formatReading(pod.ec_ppm, 0)} ppm`} />
-          <ReadingCard label="Temp" value={`${formatReading(pod.temp_c, 1)}°C`} />
+          <ReadingCard label="Temp" value={`${formatReading(pod.water_temp_c, 1)}°C`} />
           <ReadingCard label="Light" value={`${formatReading(pod.light_lux, 0)} lux`} />
           <ReadingCard label="DO" value={pod.do_mg_l ? `${formatReading(pod.do_mg_l, 1)} mg/L` : '--'} />
           <ReadingCard label="Age" value={`${Math.floor(Number(pod.age_hours || 0))}h ${Math.round((Number(pod.age_hours || 0) % 1) * 60)}m`} />
+          <ReadingCard label="Water" value={pod.water_level != null ? `${Math.round(Number(pod.water_level))}%` : '--'} />
+          <ReadingCard label="Humidity" value={pod.humidity != null ? `${Math.round(Number(pod.humidity))}%` : '--'} />
+          <ReadingCard label="Pump" value={pod.pump_status ? 'On' : 'Off'} />
+          <ReadingCard label="Flow" value={pod.flow_rate != null ? `${Number(pod.flow_rate).toFixed(1)} L/m` : '--'} />
         </div>
 
         <div className="mt-6 grid gap-5 md:grid-cols-2">
