@@ -67,12 +67,12 @@ function PodCard({ pod, onSelect }) {
         </div>
 
         <div className="grid grid-cols-[auto_1fr_auto_1fr] items-baseline gap-x-1.5 gap-y-0.5">
-          {[
+          {([
             ['pH',  (Number(pod.ph) || 0).toFixed(2)],
             ['EC',  `${Math.round(Number(pod.ec_ppm) || 0)}`],
             ['°C',  (Number(pod.air_temp_c) || 0).toFixed(1)],
             ['RH',  `${Math.round(Number(pod.humidity) || 0)}%`],
-          ].map(([label, val]) => (
+          ]).map(([label, val]) => (
             <>
               <span key={`l-${label}`} className="text-[9px]" style={{ color: 'var(--color-muted)' }}>{label}</span>
               <span key={`v-${label}`} className="text-right font-mono text-[10px] font-semibold" style={{ color: 'var(--color-text)' }}>{val}</span>
@@ -114,12 +114,12 @@ function Toolbar({ grid, cropTypes }) {
       style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}
     >
       <div className="flex flex-wrap items-center gap-1.5">
-        {[
+        {([
           { id: 'all',      label: `All (${totalAll})`,              color: 'var(--color-info)' },
           { id: 'critical', label: `Critical (${counts.critical})`,  color: 'var(--color-critical)' },
           { id: 'warning',  label: `Warning (${counts.warning})`,    color: 'var(--color-warning)' },
           { id: 'healthy',  label: `Healthy (${counts.healthy})`,    color: 'var(--color-success)' },
-        ].map(({ id, label, color }) => (
+        ]).map(({ id, label, color }) => (
           <button
             key={id}
             type="button"

@@ -5,7 +5,7 @@ import useCameraControls from './useCameraControls'
 import useFarm3D from './useFarm3D'
 
 function Scene({ mappedPods, onPodSelect, controls }) {
-  const { orbitRef, tick, handleBackgroundClick } = controls
+  const { orbitRef, tick, autoRotateEnabled, mode, resetToCenter } = controls
 
   useFrame((state) => tick(state))
 
@@ -18,7 +18,16 @@ function Scene({ mappedPods, onPodSelect, controls }) {
       <mesh
         rotation-x={-Math.PI / 2}
         position={[0, -0.01, 0]}
-        onClick={handleBackgroundClick}
+        onPointerDown={() => {
+          window.__planeClickStart = Date.now()
+        }}
+        onPointerUp={() => {
+          const isDrag = window.__planeClickStart && (Date.now() - window.__planeClickStart >= 500)
+          window.__planeClickStart = null
+          if (mode === 'orbiting' && !isDrag) {
+            resetToCenter()
+          }
+        }}
       >
         <planeGeometry args={[60, 60]} />
         <meshStandardMaterial color="#1a1f2e" roughness={0.95} />
@@ -35,7 +44,7 @@ function Scene({ mappedPods, onPodSelect, controls }) {
         />
       ))}
 
-      <OrbitControls ref={orbitRef} autoRotate={controls.mode === 'free'} autoRotateSpeed={0.4} />
+      <OrbitControls ref={orbitRef} autoRotate={autoRotateEnabled} autoRotateSpeed={0.4} />
     </>
   )
 }

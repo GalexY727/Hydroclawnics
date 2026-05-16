@@ -29,20 +29,25 @@ function MetricRow({ label, value, displayValue, rangeText, range, accent = 'var
   const metricStatus = statusForMetric(safeValue, range.min, range.max)
 
   return (
-    <div>
-      <div className="grid grid-cols-[48px_minmax(74px,1fr)_auto] items-baseline gap-2">
-        <div className="text-sm" style={{ color: 'var(--color-muted)' }}>
-          {label}
+    <div className="space-y-2">
+      <div className="flex items-baseline justify-between gap-2">
+        <div className="flex items-baseline gap-1 flex-1 min-w-0">
+          <span className="text-xs font-medium flex-shrink-0" style={{ color: 'var(--color-muted)' }}>
+            {label}
+          </span>
+          <span className="font-mono text-base font-bold" style={{ color: 'var(--color-text)' }}>
+            {displayValue}
+          </span>
         </div>
-        <div className="font-mono text-lg font-bold" style={{ color: 'var(--color-text)' }}>
-          {displayValue}
-        </div>
-        <div className="whitespace-nowrap text-xs" style={{ color: 'var(--color-muted)' }}>
-          {rangeText} <span style={{ color: metricStatus === 'ok' ? 'var(--color-success)' : 'var(--color-warning)' }}>{metricStatus === 'ok' ? '✓' : '×'}</span>
-        </div>
+        <span className="text-[10px] flex-shrink-0" style={{ color: metricStatus === 'ok' ? 'var(--color-success)' : 'var(--color-warning)' }}>
+          {metricStatus === 'ok' ? '✓' : '×'}
+        </span>
       </div>
-      <div className="mt-1.5 h-[3px] overflow-hidden rounded-sm" style={{ background: 'var(--color-surface-2)' }}>
-        <div className="h-full rounded-sm" style={{ width: `${clamped}%`, background: metricStatus === 'ok' ? accent : 'var(--color-warning)' }} />
+      <div className="text-[11px] leading-tight" style={{ color: 'var(--color-muted)' }}>
+        {rangeText}
+      </div>
+      <div className="h-[3px] overflow-hidden rounded-full" style={{ background: 'var(--color-surface-2)' }}>
+        <div className="h-full rounded-full transition-all duration-300" style={{ width: `${clamped}%`, background: metricStatus === 'ok' ? accent : 'var(--color-warning)' }} />
       </div>
     </div>
   )
