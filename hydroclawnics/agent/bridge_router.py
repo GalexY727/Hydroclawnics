@@ -13,9 +13,9 @@ def execute_command(tool_name: str, params: dict) -> dict:
     return sim_bridge.execute_command(tool_name, params)
 
 
-def get_sensor_state(zone_id: str) -> dict:
+def get_sensor_state(pod_id: str) -> dict:
     if HARDWARE_MODE:
         from . import hardware_bridge
-        return hardware_bridge.get_sensor_state(zone_id)
+        return hardware_bridge.get_sensor_state(pod_id)
     from . import sim_bridge
-    return sim_bridge.get_sensor_state(zone_id)
+    return sim_bridge.get_sensor_state(pod_id)

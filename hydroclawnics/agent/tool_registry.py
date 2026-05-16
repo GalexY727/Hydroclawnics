@@ -20,8 +20,8 @@ TOOLS: list[ToolDef] = [
         ),
         parameters={
             "type": "object",
-            "properties": {"zone_id": {"type": "string", "description": "Zone ID (T1–T4)"}},
-            "required": ["zone_id"],
+            "properties": {"pod_id": {"type": "string", "description": "Pod ID (e.g. pod_001)"}},
+            "required": ["pod_id"],
         },
     ),
     ToolDef(
@@ -33,8 +33,8 @@ TOOLS: list[ToolDef] = [
         ),
         parameters={
             "type": "object",
-            "properties": {"zone_id": {"type": "string", "description": "Zone ID (T1–T4)"}},
-            "required": ["zone_id"],
+            "properties": {"pod_id": {"type": "string", "description": "Pod ID (e.g. pod_001)"}},
+            "required": ["pod_id"],
         },
     ),
     ToolDef(
@@ -47,7 +47,7 @@ TOOLS: list[ToolDef] = [
         parameters={
             "type": "object",
             "properties": {
-                "zone_id": {"type": "string", "description": "Zone ID (T1–T4)"},
+                "pod_id": {"type": "string", "description": "Pod ID (e.g. pod_001)"},
                 "speed_percent": {
                     "type": "integer",
                     "minimum": 0,
@@ -55,7 +55,7 @@ TOOLS: list[ToolDef] = [
                     "description": "Fan speed as a percentage 0–100",
                 },
             },
-            "required": ["zone_id", "speed_percent"],
+            "required": ["pod_id", "speed_percent"],
         },
     ),
     ToolDef(
@@ -66,8 +66,8 @@ TOOLS: list[ToolDef] = [
         ),
         parameters={
             "type": "object",
-            "properties": {"zone_id": {"type": "string"}},
-            "required": ["zone_id"],
+            "properties": {"pod_id": {"type": "string"}},
+            "required": ["pod_id"],
         },
     ),
     ToolDef(
@@ -78,8 +78,8 @@ TOOLS: list[ToolDef] = [
         ),
         parameters={
             "type": "object",
-            "properties": {"zone_id": {"type": "string"}},
-            "required": ["zone_id"],
+            "properties": {"pod_id": {"type": "string"}},
+            "required": ["pod_id"],
         },
     ),
     ToolDef(
@@ -91,8 +91,8 @@ TOOLS: list[ToolDef] = [
         ),
         parameters={
             "type": "object",
-            "properties": {"zone_id": {"type": "string"}},
-            "required": ["zone_id"],
+            "properties": {"pod_id": {"type": "string"}},
+            "required": ["pod_id"],
         },
     ),
     ToolDef(
@@ -103,8 +103,8 @@ TOOLS: list[ToolDef] = [
         ),
         parameters={
             "type": "object",
-            "properties": {"zone_id": {"type": "string"}},
-            "required": ["zone_id"],
+            "properties": {"pod_id": {"type": "string"}},
+            "required": ["pod_id"],
         },
     ),
     ToolDef(
@@ -116,8 +116,8 @@ TOOLS: list[ToolDef] = [
         ),
         parameters={
             "type": "object",
-            "properties": {"zone_id": {"type": "string"}},
-            "required": ["zone_id"],
+            "properties": {"pod_id": {"type": "string"}},
+            "required": ["pod_id"],
         },
     ),
     ToolDef(
@@ -128,8 +128,8 @@ TOOLS: list[ToolDef] = [
         ),
         parameters={
             "type": "object",
-            "properties": {"zone_id": {"type": "string"}},
-            "required": ["zone_id"],
+            "properties": {"pod_id": {"type": "string"}},
+            "required": ["pod_id"],
         },
     ),
     ToolDef(
@@ -141,8 +141,8 @@ TOOLS: list[ToolDef] = [
         ),
         parameters={
             "type": "object",
-            "properties": {"zone_id": {"type": "string"}},
-            "required": ["zone_id"],
+            "properties": {"pod_id": {"type": "string"}},
+            "required": ["pod_id"],
         },
     ),
     ToolDef(
@@ -153,8 +153,8 @@ TOOLS: list[ToolDef] = [
         ),
         parameters={
             "type": "object",
-            "properties": {"zone_id": {"type": "string"}},
-            "required": ["zone_id"],
+            "properties": {"pod_id": {"type": "string"}},
+            "required": ["pod_id"],
         },
     ),
     ToolDef(
@@ -166,8 +166,8 @@ TOOLS: list[ToolDef] = [
         ),
         parameters={
             "type": "object",
-            "properties": {"zone_id": {"type": "string"}},
-            "required": ["zone_id"],
+            "properties": {"pod_id": {"type": "string"}},
+            "required": ["pod_id"],
         },
     ),
     ToolDef(
@@ -178,8 +178,8 @@ TOOLS: list[ToolDef] = [
         ),
         parameters={
             "type": "object",
-            "properties": {"zone_id": {"type": "string"}},
-            "required": ["zone_id"],
+            "properties": {"pod_id": {"type": "string"}},
+            "required": ["pod_id"],
         },
     ),
     ToolDef(
@@ -192,7 +192,7 @@ TOOLS: list[ToolDef] = [
         parameters={
             "type": "object",
             "properties": {
-                "zone_id": {"type": "string"},
+                "pod_id": {"type": "string"},
                 "target_temp_c": {
                     "type": "number",
                     "description": "Target temperature in Celsius",
@@ -202,7 +202,7 @@ TOOLS: list[ToolDef] = [
                     "description": "Target relative humidity 0–100",
                 },
             },
-            "required": ["zone_id", "target_temp_c", "target_humidity_percent"],
+            "required": ["pod_id", "target_temp_c", "target_humidity_percent"],
         },
     ),
     ToolDef(
@@ -214,8 +214,8 @@ TOOLS: list[ToolDef] = [
         ),
         parameters={
             "type": "object",
-            "properties": {"zone_id": {"type": "string"}},
-            "required": ["zone_id"],
+            "properties": {"pod_id": {"type": "string"}},
+            "required": ["pod_id"],
         },
     ),
     ToolDef(
@@ -227,21 +227,21 @@ TOOLS: list[ToolDef] = [
         ),
         parameters={
             "type": "object",
-            "properties": {"zone_id": {"type": "string"}},
-            "required": ["zone_id"],
+            "properties": {"pod_id": {"type": "string"}},
+            "required": ["pod_id"],
         },
     ),
     ToolDef(
         name="dose_acid",
         description=(
-            "Add acid solution to lower the reservoir pH. Use when pH is above the target range. "
-            "Specify amount_ml between 1–50. Each 10 ml lowers pH by ~0.2 units. "
-            "Always re-check pH 15 minutes after dosing before adding more."
+            "Add acid solution to lower the pH of a specific pod's solution. Use when a pod's pH "
+            "is above the target range. Specify amount_ml between 1–50. Each 10 ml lowers pH by "
+            "~0.2 units. Target only the pod(s) that are out of range."
         ),
         parameters={
             "type": "object",
             "properties": {
-                "zone_id": {"type": "string", "description": "Zone ID (T1–T4)"},
+                "pod_id": {"type": "string", "description": "Pod ID (e.g. pod_001)"},
                 "amount_ml": {
                     "type": "number",
                     "minimum": 1,
@@ -249,20 +249,20 @@ TOOLS: list[ToolDef] = [
                     "description": "Volume of acid solution to add in millilitres (1–50)",
                 },
             },
-            "required": ["zone_id", "amount_ml"],
+            "required": ["pod_id", "amount_ml"],
         },
     ),
     ToolDef(
         name="dose_base",
         description=(
-            "Add pH-up (base) solution to raise the reservoir pH. Use when pH is below the target "
-            "range. Specify amount_ml between 1–50. Each 10 ml raises pH by ~0.2 units. "
-            "Always re-check pH 15 minutes after dosing before adding more."
+            "Add pH-up (base) solution to raise the pH of a specific pod's solution. Use when a "
+            "pod's pH is below the target range. Specify amount_ml between 1–50. Each 10 ml raises "
+            "pH by ~0.2 units. Target only the pod(s) that are out of range."
         ),
         parameters={
             "type": "object",
             "properties": {
-                "zone_id": {"type": "string", "description": "Zone ID (T1–T4)"},
+                "pod_id": {"type": "string", "description": "Pod ID (e.g. pod_001)"},
                 "amount_ml": {
                     "type": "number",
                     "minimum": 1,
@@ -270,20 +270,20 @@ TOOLS: list[ToolDef] = [
                     "description": "Volume of base solution to add in millilitres (1–50)",
                 },
             },
-            "required": ["zone_id", "amount_ml"],
+            "required": ["pod_id", "amount_ml"],
         },
     ),
     ToolDef(
         name="dose_nutrients",
         description=(
-            "Add concentrated nutrient solution to raise the reservoir EC (electrical conductivity). "
-            "Use when EC is below the target range for the crop. Specify amount_ml between 10–200. "
-            "Each 50 ml raises EC by ~50 ppm."
+            "Add concentrated nutrient solution to raise the EC of a specific pod. Use when a "
+            "pod's EC is below the target range for the crop. Specify amount_ml between 10–200. "
+            "Each 50 ml raises EC by ~50 ppm. Target only the pod(s) that are out of range."
         ),
         parameters={
             "type": "object",
             "properties": {
-                "zone_id": {"type": "string", "description": "Zone ID (T1–T4)"},
+                "pod_id": {"type": "string", "description": "Pod ID (e.g. pod_001)"},
                 "amount_ml": {
                     "type": "number",
                     "minimum": 10,
@@ -291,28 +291,28 @@ TOOLS: list[ToolDef] = [
                     "description": "Volume of nutrient concentrate to add in millilitres (10–200)",
                 },
             },
-            "required": ["zone_id", "amount_ml"],
+            "required": ["pod_id", "amount_ml"],
         },
     ),
     ToolDef(
         name="flush_reservoir",
         description=(
-            "Dilute the nutrient reservoir with fresh water to lower the EC. Use when EC is above "
-            "the target range. Specify flush_percent (10–50) as the fraction of reservoir volume "
-            "to replace with fresh water. Each 10% flush reduces EC by roughly 8–12%."
+            "Dilute a specific pod's solution with fresh water to lower its EC. Use when a pod's "
+            "EC is above the target range. Specify flush_percent (10–50). Each 10% flush reduces "
+            "EC by roughly 8–12%. Target only the pod(s) that are out of range."
         ),
         parameters={
             "type": "object",
             "properties": {
-                "zone_id": {"type": "string", "description": "Zone ID (T1–T4)"},
+                "pod_id": {"type": "string", "description": "Pod ID (e.g. pod_001)"},
                 "flush_percent": {
                     "type": "number",
                     "minimum": 10,
                     "maximum": 50,
-                    "description": "Percentage of reservoir to replace with fresh water (10–50)",
+                    "description": "Percentage of solution to replace with fresh water (10–50)",
                 },
             },
-            "required": ["zone_id", "flush_percent"],
+            "required": ["pod_id", "flush_percent"],
         },
     ),
 ]

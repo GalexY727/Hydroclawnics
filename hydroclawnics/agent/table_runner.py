@@ -39,8 +39,9 @@ Available tools — Climate: turn_fan_on, turn_fan_off, set_fan_speed, open_vent
   enter_heat_stress_mode
 Humidity: turn_humidifier_on, turn_humidifier_off, turn_dehumidifier_on,
   turn_dehumidifier_off, enter_high_humidity_mode
-Nutrients: dose_acid(zone_id, amount_ml), dose_base(zone_id, amount_ml),
-  dose_nutrients(zone_id, amount_ml), flush_reservoir(zone_id, flush_percent)
+Nutrients (per-pod — use the pod's id from the pod data table below):
+  dose_acid(pod_id, amount_ml), dose_base(pod_id, amount_ml),
+  dose_nutrients(pod_id, amount_ml), flush_reservoir(pod_id, flush_percent)
 
 ## CROP ASSIGNMENTS
 T1=LETTUCE | T2=BASIL | T3=TOMATO | T4=SPINACH
@@ -68,16 +69,16 @@ SPINACH:
 1. CRITICAL pods first — if plant_status is "critical", act before anything else.
 2. Check each parameter against crop target range; if outside range, call the tool now.
 3. Parameter → tool mapping:
-   air_temp_c > target_max + 2°C          → turn_cooler_on(zone_id)
-   air_temp_c < target_min - 2°C          → turn_heater_on(zone_id)
-   air_temp_c slightly high (>target_max) → turn_fan_on + set_fan_speed(zone_id, 60)
-   humidity > 80%                          → enter_high_humidity_mode(zone_id)
-   humidity 70–80%                         → turn_fan_on + set_fan_speed(zone_id, 40)
-   humidity < 45%                          → turn_humidifier_on(zone_id)
-   ph > target_max                         → dose_acid(zone_id, amount_ml=10)
-   ph < target_min                         → dose_base(zone_id, amount_ml=10)
-   ec_ppm > target_max                     → flush_reservoir(zone_id, flush_percent=20)
-   ec_ppm < target_min                     → dose_nutrients(zone_id, amount_ml=50)
+   air_temp_c > target_max + 2°C          → turn_cooler_on(pod_id)
+   air_temp_c < target_min - 2°C          → turn_heater_on(pod_id)
+   air_temp_c slightly high (>target_max) → turn_fan_on + set_fan_speed(pod_id, 60)
+   humidity > 80%                          → enter_high_humidity_mode(pod_id)
+   humidity 70–80%                         → turn_fan_on + set_fan_speed(pod_id, 40)
+   humidity < 45%                          → turn_humidifier_on(pod_id)
+   ph > target_max                         → dose_acid(pod_id, amount_ml=10)
+   ph < target_min                         → dose_base(pod_id, amount_ml=10)
+   ec_ppm > target_max                     → flush_reservoir(pod_id, flush_percent=20)
+   ec_ppm < target_min                     → dose_nutrients(pod_id, amount_ml=50)
    water_level < 40%                       → flag critical; log "refill reservoir"
    water_level < 60% (or 65% for tomato)  → log "top up reservoir soon"
 4. If ALL parameters are within range and no supervisor directives: do NOT call tools.
@@ -88,7 +89,7 @@ SPINACH:
 
 ## OUTPUT FORMAT (strict — every response must follow this)
 
-ZONE: [zone_id]  CROP: [crop_name]
+ZONE: [pod_id]  CROP: [crop_name]
 STATUS: [healthy / warning / critical]
 OBSERVATIONS:
   - [parameter]: [value] → [in range / HIGH / LOW]
@@ -171,7 +172,7 @@ def parse_agent_response(response_text: str) -> dict:
     """Parse the structured text output from the table agent.
 
     Expected format:
-        ZONE: [zone_id]  CROP: [crop_name]
+        ZONE: [pod_id]  CROP: [crop_name]
         STATUS: [healthy/warning/critical]
         OBSERVATIONS:
           - [param]: [value] → [in range / HIGH / LOW]
@@ -180,15 +181,15 @@ def parse_agent_response(response_text: str) -> dict:
 
     Returns a structured dict, or a safe default on parse failure.
     """
-    default: dict = {"zone_id": "unknown", "status": "unknown", "observations": [], "actions": []}
+    default: dict = {"pod_id": "unknown", "status": "unknown", "observations": [], "actions": []}
     if not response_text:
         return default
     try:
-        result: dict = {"zone_id": "unknown", "status": "unknown", "observations": [], "actions": []}
+        result: dict = {"pod_id": "unknown", "status": "unknown", "observations": [], "actions": []}
 
         m = re.search(r"ZONE:\s*(\S+)", response_text, re.IGNORECASE)
         if m:
-            result["zone_id"] = m.group(1).rstrip(",").strip()
+            result["pod_id"] = m.group(1).rstrip(",").strip()
 
         m = re.search(r"STATUS:\s*(\w+)", response_text, re.IGNORECASE)
         if m:
@@ -299,11 +300,11 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
         tool_results = []
         for tc in msg.tool_calls:
             params = json.loads(tc.function.arguments)
-            params.setdefault("zone_id", table_id)
+            params.setdefault("pod_id", table_id)
 
             result = execute_tool(tc.function.name, params)
             action = alog.sanitize_action({
-                "zone_id": table_id,
+                "pod_id": table_id,
                 "pod_id": params.get("pod_id") or table_id,
                 "tool": tc.function.name,
                 "params": params,
@@ -335,7 +336,7 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
         if not (reasoning_text and alog.validate_agent_response(reasoning_text)):
             reasoning_text = reasoning_text or f"Executed {len(actions_taken)} corrective action(s)"
             parsed = {
-                "zone_id": table_id,
+                "pod_id": table_id,
                 "status": reading.status,
                 "observations": [
                     {"param": ft, "value": "", "flag": "out of range"}
@@ -350,7 +351,7 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
         if reasoning_text and not alog.validate_agent_response(reasoning_text):
             logger.warning("[%s] Agent response looked truncated; treating cycle as no_op", table_id)
             reasoning_text = "all parameters within range"
-            parsed = {"zone_id": table_id, "status": reading.status, "observations": [], "actions": []}
+            parsed = {"pod_id": table_id, "status": reading.status, "observations": [], "actions": []}
         else:
             parsed = parse_agent_response(reasoning_text)
             if parsed.get("status") not in ("healthy", "warning", "critical"):
@@ -362,10 +363,10 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
                 if not tool_name or tool_name == "no_op":
                     continue
                 params = dict(act.get("params") or {})
-                params.setdefault("zone_id", table_id)
+                params.setdefault("pod_id", table_id)
                 result = execute_tool(tool_name, params)
                 action = alog.sanitize_action({
-                    "zone_id": table_id,
+                    "pod_id": table_id,
                     "pod_id": params.get("pod_id") or table_id,
                     "tool": tool_name,
                     "params": params,
@@ -395,7 +396,7 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
     if not actions_taken:
         actions_taken = [
             alog.sanitize_action({
-                "zone_id": table_id,
+                "pod_id": table_id,
                 "pod_id": table_id,
                 "tool": "no_op",
                 "params": {},
@@ -407,7 +408,7 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
 
     # One structured cycle entry — this is what gets broadcast to the frontend
     cycle_entry = alog.log_cycle(
-        zone_id=table_id,
+        pod_id=table_id,
         status=effective_status,
         observations=parsed.get("observations", []),
         actions_taken=actions_taken,
@@ -422,7 +423,7 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
         message_bus.mark_directive_consumed(d["id"])
 
     message_bus.write_table_report(table_id, {
-        "zone_id": table_id,
+        "pod_id": table_id,
         "status": reading.status,
         "avg_temp_c": reading.avg_temp_c,
         "avg_ph": reading.avg_ph,

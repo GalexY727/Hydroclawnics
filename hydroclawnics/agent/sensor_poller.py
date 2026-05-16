@@ -15,7 +15,7 @@ PODS_PER_TABLE = max(1, int(os.getenv("PODS_PER_TABLE", "100")))
 
 @dataclass
 class SensorReading:
-    zone_id: str
+    pod_id: str
     pod_ids: list[str]
     avg_ph: float
     avg_ec_ppm: float
@@ -38,7 +38,7 @@ def read_all() -> dict[str, SensorReading]:
     except (json.JSONDecodeError, OSError):
         return {}
 
-    # Reverse ZONE_CROP_MAP: crop → zone_id  (e.g. "lettuce" → "T1")
+    # Reverse ZONE_CROP_MAP: crop → pod_id  (e.g. "lettuce" → "T1")
     crop_to_zone = {crop: zone for zone, crop in sim_bridge.ZONE_CROP_MAP.items()}
 
     # Group pods by zone using their crop field
@@ -53,15 +53,15 @@ def read_all() -> dict[str, SensorReading]:
         return round(sum(vals) / len(vals), 3) if vals else 0.0
 
     readings: dict[str, SensorReading] = {}
-    for zone_id, zone_pods in pods_by_zone.items():
+    for pod_id, zone_pods in pods_by_zone.items():
         critical = sum(1 for p in zone_pods if p.get("status") == "critical")
         warning  = sum(1 for p in zone_pods if p.get("status") == "warning")
         healthy  = sum(1 for p in zone_pods if p.get("status") == "healthy")
         faults   = list({p["fault_type"] for p in zone_pods if p.get("fault_type", "none") != "none"})
         status   = "critical" if critical > 0 else ("warning" if warning > 0 else "healthy")
 
-        readings[zone_id] = SensorReading(
-            zone_id=zone_id,
+        readings[pod_id] = SensorReading(
+            pod_id=pod_id,
             pod_ids=[p["id"] for p in zone_pods],
             avg_ph=_avg("ph", zone_pods),
             avg_ec_ppm=round(_avg("ec_ppm", zone_pods), 1),

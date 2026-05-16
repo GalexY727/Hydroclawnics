@@ -39,21 +39,21 @@ def _send_command(cmd: dict, retries: int = 1) -> dict:
 
 
 def execute_command(tool_name: str, params: dict) -> dict:
-    zone_id = params.get("zone_id", "")
+    pod_id = params.get("pod_id", "")
     cmd = {
         "cmd": tool_name,
-        "zone": zone_id,
-        **{k: v for k, v in params.items() if k != "zone_id"},
+        "zone": pod_id,
+        **{k: v for k, v in params.items() if k != "pod_id"},
     }
     try:
         result = _send_command(cmd)
-        return {"ok": result.get("ok", False), "zone_id": zone_id, "command": tool_name, **result}
+        return {"ok": result.get("ok", False), "pod_id": pod_id, "command": tool_name, **result}
     except HardwareError as exc:
-        return {"ok": False, "zone_id": zone_id, "command": tool_name, "error": str(exc)}
+        return {"ok": False, "pod_id": pod_id, "command": tool_name, "error": str(exc)}
 
 
-def get_sensor_state(zone_id: str) -> dict:
+def get_sensor_state(pod_id: str) -> dict:
     try:
-        return _send_command({"cmd": "read_sensors", "zone": zone_id})
+        return _send_command({"cmd": "read_sensors", "zone": pod_id})
     except HardwareError as exc:
-        return {"zone_id": zone_id, "error": str(exc), "status": "error"}
+        return {"pod_id": pod_id, "error": str(exc), "status": "error"}

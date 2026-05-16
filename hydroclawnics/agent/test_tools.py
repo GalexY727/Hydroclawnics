@@ -8,22 +8,26 @@ from . import sim_bridge
 from .tool_registry import TOOLS, execute_tool
 
 _TEST_CASES = [
-    ("turn_fan_on",              {"zone_id": "T1"}),
-    ("set_fan_speed",            {"zone_id": "T1", "speed_percent": 75}),
-    ("turn_fan_off",             {"zone_id": "T1"}),
-    ("open_vent",                {"zone_id": "T2"}),
-    ("close_vent",               {"zone_id": "T2"}),
-    ("turn_heater_on",           {"zone_id": "T2"}),
-    ("turn_heater_off",          {"zone_id": "T2"}),
-    ("turn_cooler_on",           {"zone_id": "T3"}),
-    ("turn_cooler_off",          {"zone_id": "T3"}),
-    ("turn_humidifier_on",       {"zone_id": "T3"}),
-    ("turn_humidifier_off",      {"zone_id": "T3"}),
-    ("turn_dehumidifier_on",     {"zone_id": "T4"}),
-    ("turn_dehumidifier_off",    {"zone_id": "T4"}),
-    ("set_climate_target",       {"zone_id": "T1", "target_temp_c": 23.0, "target_humidity_percent": 60.0}),
-    ("enter_heat_stress_mode",   {"zone_id": "T2"}),
-    ("enter_high_humidity_mode", {"zone_id": "T3"}),
+    ("turn_fan_on",              {"pod_id": "pod_001"}),
+    ("set_fan_speed",            {"pod_id": "pod_001", "speed_percent": 75}),
+    ("turn_fan_off",             {"pod_id": "pod_001"}),
+    ("open_vent",                {"pod_id": "pod_002"}),
+    ("close_vent",               {"pod_id": "pod_002"}),
+    ("turn_heater_on",           {"pod_id": "pod_002"}),
+    ("turn_heater_off",          {"pod_id": "pod_002"}),
+    ("turn_cooler_on",           {"pod_id": "pod_003"}),
+    ("turn_cooler_off",          {"pod_id": "pod_003"}),
+    ("turn_humidifier_on",       {"pod_id": "pod_003"}),
+    ("turn_humidifier_off",      {"pod_id": "pod_003"}),
+    ("turn_dehumidifier_on",     {"pod_id": "pod_004"}),
+    ("turn_dehumidifier_off",    {"pod_id": "pod_004"}),
+    ("set_climate_target",       {"pod_id": "pod_001", "target_temp_c": 23.0, "target_humidity_percent": 60.0}),
+    ("enter_heat_stress_mode",   {"pod_id": "pod_002"}),
+    ("enter_high_humidity_mode", {"pod_id": "pod_003"}),
+    ("dose_acid",                {"pod_id": "pod_001", "amount_ml": 10.0}),
+    ("dose_base",                {"pod_id": "pod_002", "amount_ml": 20.0}),
+    ("dose_nutrients",           {"pod_id": "pod_003", "amount_ml": 50.0}),
+    ("flush_reservoir",          {"pod_id": "pod_004", "flush_percent": 30.0}),
 ]
 
 
@@ -51,9 +55,9 @@ async def main() -> int:
 
     # Safety interlock: heater must cut off when cooler activates
     print("\n--- Safety interlock checks ---")
-    sim_bridge.execute_command("turn_heater_on", {"zone_id": "T1"})
-    sim_bridge.execute_command("turn_cooler_on", {"zone_id": "T1"})
-    if not sim_bridge._state["T1"].heater_on:
+    sim_bridge.execute_command("turn_heater_on", {"pod_id": "pod_001"})
+    sim_bridge.execute_command("turn_cooler_on", {"pod_id": "pod_001"})
+    if not sim_bridge._state["pod_001"].heater_on:
         print("  [PASS] Heater auto-disabled when cooler activated")
         passed += 1
     else:
@@ -61,9 +65,9 @@ async def main() -> int:
         failed += 1
 
     # Safety interlock: cooler must cut off when heater activates
-    sim_bridge.execute_command("turn_cooler_on", {"zone_id": "T1"})
-    sim_bridge.execute_command("turn_heater_on", {"zone_id": "T1"})
-    if not sim_bridge._state["T1"].cooler_on:
+    sim_bridge.execute_command("turn_cooler_on", {"pod_id": "pod_001"})
+    sim_bridge.execute_command("turn_heater_on", {"pod_id": "pod_001"})
+    if not sim_bridge._state["pod_001"].cooler_on:
         print("  [PASS] Cooler auto-disabled when heater activated")
         passed += 1
     else:
@@ -71,8 +75,8 @@ async def main() -> int:
         failed += 1
 
     # Verify heat stress mode compound action
-    sim_bridge.execute_command("enter_heat_stress_mode", {"zone_id": "T1"})
-    z = sim_bridge._state["T1"]
+    sim_bridge.execute_command("enter_heat_stress_mode", {"pod_id": "pod_001"})
+    z = sim_bridge._state["pod_001"]
     if z.fan_on and z.fan_speed == 100 and z.cooler_on and not z.heater_on and z.vent_open:
         print("  [PASS] enter_heat_stress_mode sets correct compound state")
         passed += 1

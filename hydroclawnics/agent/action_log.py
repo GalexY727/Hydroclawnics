@@ -26,11 +26,11 @@ RESPONSE_SCHEMAS = {
         "summary_text", "actions",
     ],
     "pod_agent_update": [
-        "type", "pod_id", "zone_id", "tool", "params",
+        "type", "pod_id", "pod_id", "tool", "params",
         "reason", "status", "ts", "cycle_id",
     ],
     "agent_action": [
-        "type", "ts", "zone_id", "tool", "params", "result", "reasoning", "cycle_id",
+        "type", "ts", "pod_id", "tool", "params", "result", "reasoning", "cycle_id",
     ],
 }
 
@@ -87,8 +87,8 @@ def flatten_params(params: Any) -> dict:
 def sanitize_action(action: dict) -> dict:
     safe = dict(action or {})
     safe["ts"] = valid_iso_ts(safe.get("ts"))
-    safe["zone_id"] = truncate_words(safe.get("zone_id") or safe.get("table_id"), 20)
-    safe["pod_id"] = truncate_words(safe.get("pod_id") or safe["zone_id"], 20)
+    safe["pod_id"] = truncate_words(safe.get("pod_id") or safe.get("table_id"), 20)
+    safe["pod_id"] = truncate_words(safe.get("pod_id") or safe["pod_id"], 20)
     safe["tool"] = truncate_words(safe.get("tool") or "no_op", 40)
     safe["params"] = flatten_params(safe.get("params"))
     safe["reason"] = truncate_words(
@@ -200,7 +200,7 @@ def log(
 
 
 def _build_decision_entry(
-    zone_id: str,
+    pod_id: str,
     status: str,
     observations: list[dict],
     actions: list[dict],
@@ -230,7 +230,7 @@ def _build_decision_entry(
 
     return {
         "timestamp": ts,
-        "pod_id": zone_id,
+        "pod_id": pod_id,
         "sensor_state": {},
         "diagnosis": truncate_words(diagnosis, 200),
         "action": action_str,
@@ -247,13 +247,13 @@ def _summary_text(actions: list[dict], zones_evaluated: int) -> str:
         return f"All {zones_evaluated} zones within range. No intervention needed."
     if count <= 3:
         parts = [
-            f"{a.get('tool', '')} on {a.get('zone_id', '')}: {a.get('reason', '')}"
+            f"{a.get('tool', '')} on {a.get('pod_id', '')}: {a.get('reason', '')}"
             for a in actions if a.get("tool") != "no_op"
         ]
         return truncate_words("; ".join(parts), 280)
     grouped = Counter(a.get("tool", "action") for a in actions if a.get("tool") != "no_op")
     phrases = [f"{n} {tool.replace('_', ' ')}" for tool, n in grouped.items()]
-    zone_count = len({a.get("zone_id", "") for a in actions if a.get("tool") != "no_op"})
+    zone_count = len({a.get("pod_id", "") for a in actions if a.get("tool") != "no_op"})
     return truncate_words(f"{count} actions across {zone_count} zones: {', '.join(phrases)}.", 280)
 
 
@@ -295,7 +295,7 @@ async def get_pod_reasoning(pod_id: str) -> dict:
 
 
 def log_cycle(
-    zone_id: str,
+    pod_id: str,
     status: str,
     observations: list[dict],
     actions_taken: list[dict],
@@ -308,8 +308,8 @@ def log_cycle(
     safe_actions = [
         sanitize_action({
             **action,
-            "zone_id": zone_id,
-            "pod_id": action.get("pod_id") or action.get("params", {}).get("pod_id") or zone_id,
+            "pod_id": pod_id,
+            "pod_id": action.get("pod_id") or action.get("params", {}).get("pod_id") or pod_id,
             "status": status,
             "cycle_id": safe_cycle_id,
             "ts": action.get("ts") or _now(),
@@ -319,8 +319,8 @@ def log_cycle(
     ]
     if not safe_actions:
         safe_actions = [sanitize_action({
-            "zone_id": zone_id,
-            "pod_id": zone_id,
+            "pod_id": pod_id,
+            "pod_id": pod_id,
             "status": status,
             "cycle_id": safe_cycle_id,
             "tool": "no_op",
@@ -330,7 +330,7 @@ def log_cycle(
     entry = {
         "ts": _now(),
         "cycle_id": safe_cycle_id,
-        "zone_id": zone_id,
+        "pod_id": pod_id,
         "status": sanitize_action({"status": status})["status"],
         "observations": observations,
         "actions_taken": safe_actions,
@@ -343,7 +343,7 @@ def log_cycle(
     DECISIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
     with DECISIONS_FILE.open("a", encoding="utf-8") as fp:
         decision = _build_decision_entry(
-            zone_id=zone_id,
+            pod_id=pod_id,
             status=entry["status"],
             observations=observations,
             actions=safe_actions,
@@ -360,8 +360,8 @@ def build_cycle_summary(entry: dict, zones_evaluated: int = 1) -> dict:
     actions = [sanitize_action(action) for action in entry.get("actions_taken", [])]
     real_actions = [action for action in actions if action.get("tool") != "no_op"]
     status = entry.get("status", "warning")
-    critical_zones = [entry.get("zone_id", "")] if status == "critical" else []
-    warning_zones = [entry.get("zone_id", "")] if status == "warning" else []
+    critical_zones = [entry.get("pod_id", "")] if status == "critical" else []
+    warning_zones = [entry.get("pod_id", "")] if status == "warning" else []
     return validate_event({
         "type": "agent_cycle_summary",
         "ts": valid_iso_ts(entry.get("ts")),
@@ -375,7 +375,7 @@ def build_cycle_summary(entry: dict, zones_evaluated: int = 1) -> dict:
         "summary_text": truncate_words(_summary_text(actions, zones_evaluated), 280),
         "actions": [
             {
-                "zone_id": action.get("zone_id", ""),
+                "pod_id": action.get("pod_id", ""),
                 "pod_id": action.get("pod_id", ""),
                 "tool": action.get("tool", ""),
                 "params": action.get("params", {}),
@@ -392,7 +392,7 @@ def build_agent_action(action: dict) -> dict:
     return validate_event({
         "type": "agent_action",
         "ts": safe["ts"],
-        "zone_id": safe["zone_id"],
+        "pod_id": safe["pod_id"],
         "tool": safe["tool"],
         "params": safe["params"],
         "result": safe["result"],
@@ -406,7 +406,7 @@ def build_pod_update(action: dict) -> dict:
     return validate_event({
         "type": "pod_agent_update",
         "pod_id": safe["pod_id"],
-        "zone_id": safe["zone_id"],
+        "pod_id": safe["pod_id"],
         "tool": safe["tool"],
         "params": safe["params"],
         "reason": safe["reason"],

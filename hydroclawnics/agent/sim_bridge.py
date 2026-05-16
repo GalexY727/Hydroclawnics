@@ -7,13 +7,15 @@ from datetime import datetime, timezone
 
 try:
     from hydroclawnics.sim_config import CROP_ORDER, POD_COUNT
+    from hydroclawnics import state as _state_mod
 except ModuleNotFoundError:
     from sim_config import CROP_ORDER, POD_COUNT
+    import state as _state_mod
 
 _state: dict[str, _ZoneState] = {}
 _tick_task: asyncio.Task | None = None  # type: ignore[type-arg]
 
-# zone_id → crop name (mirrors table_runner.CROP_MAP)
+# pod_id → crop name (mirrors table_runner.CROP_MAP)
 ZONE_CROP_MAP: dict[str, str] = {
     "T1": "lettuce",
     "T2": "basil",
@@ -126,7 +128,7 @@ def _evaluate_zone(zone: "_ZoneState") -> tuple[str, str]:
 
 @dataclass
 class _ZoneState:
-    zone_id: str
+    pod_id: str
     crop: str = "lettuce"
     temp_c: float = 22.0
     water_temp_c: float = 20.0
@@ -151,7 +153,7 @@ class _ZoneState:
 def _init_state() -> dict[str, _ZoneState]:
     return {
         f"pod_{i:03d}": _ZoneState(
-            zone_id=f"pod_{i:03d}",
+            pod_id=f"pod_{i:03d}",
             crop=CROP_ORDER[(i - 1) % len(CROP_ORDER)],
         )
         for i in range(1, POD_COUNT + 1)
@@ -161,15 +163,15 @@ def _init_state() -> dict[str, _ZoneState]:
 _state.update(_init_state())
 
 
-def _get_zone(zone_id: str) -> _ZoneState:
-    if zone_id not in _state:
-        crop = ZONE_CROP_MAP.get(zone_id, "lettuce")
+def _get_zone(pod_id: str) -> _ZoneState:
+    if pod_id not in _state:
+        crop = ZONE_CROP_MAP.get(pod_id, "lettuce")
         targets = CROP_TARGETS[crop]
         # Initialize at midpoint of each range so status starts healthy
         def _mid(lo: float, hi: float | None) -> float:
             return (lo + hi) / 2.0 if hi is not None else lo + 10.0
         zone = _ZoneState(
-            zone_id=zone_id,
+            pod_id=pod_id,
             crop=crop,
             temp_c=_mid(*targets["air_temp_c"]),
             water_temp_c=_mid(*targets["water_temp_c"]),
@@ -181,17 +183,23 @@ def _get_zone(zone_id: str) -> _ZoneState:
             target_humidity_percent=_mid(*targets["humidity_pct"]),
         )
         zone.plant_status, zone.fault_type = _evaluate_zone(zone)
-        _state[zone_id] = zone
-    return _state[zone_id]
+        _state[pod_id] = zone
+    return _state[pod_id]
 
 
-def get_all_zone_ids() -> list[str]:
+def get_all_pod_ids() -> list[str]:
     return list(_state.keys())
 
 
+def _find_pod(pod_id: str):  # type: ignore[return]
+    if not pod_id:
+        return None
+    return next((p for p in _state_mod.pods if p.id == pod_id), None)
+
+
 def execute_command(tool_name: str, params: dict) -> dict:
-    zone_id = params.get("zone_id", "")
-    zone = _get_zone(zone_id)
+    pod_id = params.get("pod_id", "")
+    zone = _get_zone(pod_id)
     zone.last_updated = datetime.now(timezone.utc).isoformat()
 
     match tool_name:
@@ -247,26 +255,42 @@ def execute_command(tool_name: str, params: dict) -> dict:
             zone.humidifier_on = False
         case "dose_acid":
             amount_ml = float(params.get("amount_ml", 10))
-            zone.ph = max(4.0, zone.ph - amount_ml * 0.02)
+            pod = _find_pod(params.get("pod_id", ""))
+            if pod is not None:
+                pod.ph = max(4.0, pod.ph - amount_ml * 0.02)
+            else:
+                zone.ph = max(4.0, zone.ph - amount_ml * 0.02)
         case "dose_base":
             amount_ml = float(params.get("amount_ml", 10))
-            zone.ph = min(9.0, zone.ph + amount_ml * 0.02)
+            pod = _find_pod(params.get("pod_id", ""))
+            if pod is not None:
+                pod.ph = min(9.0, pod.ph + amount_ml * 0.02)
+            else:
+                zone.ph = min(9.0, zone.ph + amount_ml * 0.02)
         case "dose_nutrients":
             amount_ml = float(params.get("amount_ml", 50))
-            zone.ec_ppm = min(3000.0, zone.ec_ppm + amount_ml * 1.0)
+            pod = _find_pod(params.get("pod_id", ""))
+            if pod is not None:
+                pod.ec_ppm = min(3000.0, pod.ec_ppm + amount_ml * 1.0)
+            else:
+                zone.ec_ppm = min(3000.0, zone.ec_ppm + amount_ml * 1.0)
         case "flush_reservoir":
             flush_pct = float(params.get("flush_percent", 20)) / 100.0
-            zone.ec_ppm = max(100.0, zone.ec_ppm * (1.0 - flush_pct))
+            pod = _find_pod(params.get("pod_id", ""))
+            if pod is not None:
+                pod.ec_ppm = max(100.0, pod.ec_ppm * (1.0 - flush_pct))
+            else:
+                zone.ec_ppm = max(100.0, zone.ec_ppm * (1.0 - flush_pct))
         case _:
             return {"ok": False, "error": f"Unknown command: {tool_name}"}
 
-    return {"ok": True, "zone_id": zone_id, "command": tool_name, "state": asdict(zone)}
+    return {"ok": True, "pod_id": pod_id, "command": tool_name, "state": asdict(zone)}
 
 
-def get_sensor_state(zone_id: str) -> dict:
-    zone = _get_zone(zone_id)
+def get_sensor_state(pod_id: str) -> dict:
+    zone = _get_zone(pod_id)
     return {
-        "zone_id": zone_id,
+        "pod_id": pod_id,
         "crop": zone.crop,
         "temp_c": round(zone.temp_c, 2),
         "air_temp_c": round(zone.temp_c, 2),

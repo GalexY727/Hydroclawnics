@@ -73,19 +73,19 @@ async def _run() -> int:
     message_bus.init_db()
 
     # Set up 4 zones: T1–T4 with matching crops and forced states
-    for zone_id, crop, ph, ec in [
+    for pod_id, crop, ph, ec in [
         ("T1", "lettuce", 6.5,  700.0),
         ("T2", "basil",   6.0,  900.0),
         ("T3", "tomato",  7.2,  2000.0),  # warning: ph high (target 5.5–6.5)
         ("T4", "spinach", 6.5,  3500.0),  # critical: ec way above 1610
     ]:
-        zone = sim_bridge._get_zone(zone_id)
+        zone = sim_bridge._get_zone(pod_id)
         zone.crop = crop
         zone.ph = ph
         zone.ec_ppm = ec
         # Force status evaluation immediately
         zone.plant_status, zone.fault_type = sim_bridge._evaluate_zone(zone)
-        print(f"[setup] {zone_id} ({crop}): plant_status={zone.plant_status}, fault_type={zone.fault_type}")
+        print(f"[setup] {pod_id} ({crop}): plant_status={zone.plant_status}, fault_type={zone.fault_type}")
 
     client = AsyncOpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=api_key)
 
@@ -113,7 +113,7 @@ async def _run() -> int:
         for line in alog.DECISIONS_FILE.open(encoding="utf-8"):
             try:
                 e = json.loads(line)
-                if e.get("zone_id") == "T4":
+                if e.get("pod_id") == "T4":
                     cycle_entry = e
             except json.JSONDecodeError:
                 pass
