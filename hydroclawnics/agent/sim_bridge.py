@@ -253,6 +253,10 @@ def execute_command(tool_name: str, params: dict) -> dict:
             zone.fan_on = True
             zone.fan_speed = 75
             zone.humidifier_on = False
+        case "set_light_level":
+            pod = _find_pod(params.get("pod_id", ""))
+            if pod is not None:
+                pod.light_lux = max(1000.0, min(60000.0, float(params.get("target_lux", pod.light_lux))))
         case "dose_acid":
             amount_ml = float(params.get("amount_ml", 10))
             pod = _find_pod(params.get("pod_id", ""))

@@ -232,6 +232,26 @@ TOOLS: list[ToolDef] = [
         },
     ),
     ToolDef(
+        name="set_light_level",
+        description=(
+            "Set a pod's grow light level to a target lux value. Use when light_lux is outside "
+            "the crop's healthy range. Calculate target_lux as the midpoint of the crop's light range."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "pod_id": {"type": "string", "description": "Pod ID (e.g. pod_001)"},
+                "target_lux": {
+                    "type": "number",
+                    "minimum": 1000,
+                    "maximum": 60000,
+                    "description": "Target light intensity in lux",
+                },
+            },
+            "required": ["pod_id", "target_lux"],
+        },
+    ),
+    ToolDef(
         name="dose_acid",
         description=(
             "Add acid solution to lower the pH of a specific pod's solution. Use when a pod's pH "

@@ -84,6 +84,9 @@ def _apply_agent_tool_to_pod(tool: str, params: dict) -> bool:
     elif tool in {"turn_heater_on"}:
         pod.temp_c = min(40.0, pod.temp_c + 4.0)
         pod.last_action = tool
+    elif tool == "set_light_level":
+        pod.light_lux = max(1000.0, min(60000.0, float(params.get("target_lux", pod.light_lux))))
+        pod.last_action = tool
     else:
         return False
 
