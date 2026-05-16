@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import PhysicalPot from './PhysicalPot'
 import usePodGrid from '../../hooks/usePodGrid'
 import CropIcon from '../CropIcon'
@@ -18,6 +18,12 @@ const WATER_COLOR = (pct) => {
   if (n < 50) return 'var(--color-warning)'
   return 'var(--color-info)'
 }
+
+const SIMULATION_FAULTS = [
+  { id: 'ph_crash', label: 'pH crash' },
+  { id: 'nutrient_spike', label: 'Nutrient spike' },
+  { id: 'nutrient_low', label: 'Nutrient low' },
+]
 
 const STATUS_BORDER = {
   healthy:  'var(--color-success)',
@@ -101,7 +107,7 @@ function PodCard({ pod, onSelect }) {
   )
 }
 
-function Toolbar({ grid, cropTypes }) {
+function Toolbar({ grid, cropTypes, simulation }) {
   const { statusFilter, setStatusFilter, cropFilter, setCropFilter, sort, setSort, total, counts } = grid
 
   const toggleCrop = (crop) => {
@@ -176,6 +182,26 @@ function Toolbar({ grid, cropTypes }) {
       <span className="ml-auto text-xs" style={{ color: 'var(--color-muted)' }}>
         {total} pod{total !== 1 ? 's' : ''}
       </span>
+
+      <button
+        type="button"
+        onClick={simulation.onInjectFault}
+        disabled={simulation.busy || simulation.disabled}
+        className="rounded-md border px-3 py-1.5 text-xs font-bold transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-50"
+        style={{
+          background: 'rgba(201, 86, 107, 0.18)',
+          borderColor: 'var(--color-critical)',
+          color: 'var(--color-text)',
+        }}
+      >
+        {simulation.busy ? 'Injecting...' : 'Simulate fault'}
+      </button>
+
+      {simulation.message && (
+        <span className="text-xs font-medium" style={{ color: simulation.error ? 'var(--color-critical)' : 'var(--color-warning)' }}>
+          {simulation.message}
+        </span>
+      )}
     </div>
   )
 }
@@ -252,6 +278,45 @@ export default function PodGrid({ pods, onSelect }) {
   const grid = usePodGrid(pods)
   const physicalPod = pods.pod_00 || Object.values(pods)[0] || null
   const cropTypes = grid.cropTypes
+  const [simulationBusy, setSimulationBusy] = useState(false)
+  const [simulationMessage, setSimulationMessage] = useState('')
+  const [simulationError, setSimulationError] = useState(false)
+
+  const simulationPods = useMemo(
+    () => Object.values(pods).filter((pod) => pod.id && pod.id !== physicalPod?.id),
+    [pods, physicalPod?.id],
+  )
+
+  const injectSimulationFault = async () => {
+    if (simulationPods.length === 0 || simulationBusy) {
+      return
+    }
+
+    const pod = simulationPods[Math.floor(Math.random() * simulationPods.length)]
+    const fault = SIMULATION_FAULTS[Math.floor(Math.random() * SIMULATION_FAULTS.length)]
+
+    setSimulationBusy(true)
+    setSimulationError(false)
+    setSimulationMessage(`Sending ${fault.label} to ${pod.id}...`)
+
+    try {
+      const response = await fetch(`/api/fault/${encodeURIComponent(pod.id)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fault: fault.id }),
+      })
+      if (!response.ok) {
+        throw new Error(`Fault request failed (${response.status})`)
+      }
+      setSimulationMessage(`${pod.id}: ${fault.label}`)
+      onSelect?.(pod.id)
+    } catch {
+      setSimulationError(true)
+      setSimulationMessage('Could not inject fault')
+    } finally {
+      setSimulationBusy(false)
+    }
+  }
 
   if (grid.total === 0 && Object.keys(pods).length === 0) {
     return (
@@ -263,7 +328,17 @@ export default function PodGrid({ pods, onSelect }) {
 
   return (
     <div className="flex h-full flex-col">
-      <Toolbar grid={grid} cropTypes={cropTypes} />
+      <Toolbar
+        grid={grid}
+        cropTypes={cropTypes}
+        simulation={{
+          busy: simulationBusy,
+          disabled: simulationPods.length === 0,
+          error: simulationError,
+          message: simulationMessage,
+          onInjectFault: injectSimulationFault,
+        }}
+      />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">

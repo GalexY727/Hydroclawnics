@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 import agent_bridge
 import state
-from simulator import SimulatorEngine, inject_fault
+from simulator import SENSORS_FILE, SimulatorEngine, inject_fault
 
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
@@ -178,6 +178,10 @@ async def post_fault(pod_id: str, body: FaultRequest) -> dict:
     for pod in engine.pods:
         if pod.id == pod_id:
             inject_fault(pod, body.fault)
+            payload = engine.snapshot()
+            SENSORS_FILE.parent.mkdir(parents=True, exist_ok=True)
+            SENSORS_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            await broadcast({"type": "pod_update", "pods": payload})
             return {"ok": True, "pod": pod_id, "fault": body.fault}
     raise HTTPException(status_code=404, detail="Pod not found")
 
