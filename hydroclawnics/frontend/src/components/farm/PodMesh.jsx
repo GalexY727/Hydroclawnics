@@ -4,14 +4,14 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { createPlantMesh, PLANT_TYPES } from '../../lib/plantMesh'
 
-export default function PodMesh({ pod, onPodSelect, podIndex = 0, preview = false }) {
+export default function PodMesh({ pod, onPodSelect, podIndex = 0 }) {
   const plantRef = useRef()
   const isAlerted = pod.status === 'warning' || pod.status === 'critical'
   const stage = pod.stage ?? 1
   const health = pod.health ?? 0.8
   const plantType = PLANT_TYPES[podIndex % PLANT_TYPES.length]
 
-  const { plantGroup, alertMaterials } = useMemo(() => {
+  const plantGroup = useMemo(() => {
     const group = createPlantMesh(stage, health, plantType)
     const alertMats = []
 
@@ -30,7 +30,8 @@ export default function PodMesh({ pod, onPodSelect, podIndex = 0, preview = fals
       })
     }
 
-    return { plantGroup: group, alertMaterials: alertMats }
+    group.userData.alertMaterials = alertMats
+    return group
   }, [stage, health, plantType, isAlerted, pod.status])
 
   useFrame(({ clock }) => {
@@ -38,24 +39,14 @@ export default function PodMesh({ pod, onPodSelect, podIndex = 0, preview = fals
     const phase = podIndex * 1.3
 
     if (plantRef.current) {
-      if (preview) {
-        // Dramatic showcase animation for the detail panel preview
-        plantRef.current.rotation.x = Math.sin(t * 0.55 + phase) * 0.13
-        plantRef.current.rotation.z = Math.cos(t * 0.42 + phase) * 0.09
-        plantRef.current.position.y = Math.sin(t * 0.9 + phase) * 0.018
-      } else {
-        // Subtle wind sway for farm view
-        plantRef.current.rotation.x =
-          (Math.sin(t * 0.3 + phase) * 0.7 + Math.sin(t * 0.13 + phase * 1.4) * 0.3) * 0.018
-        plantRef.current.rotation.z =
-          (Math.cos(t * 0.25 + phase) * 0.7 + Math.cos(t * 0.09 + phase * 1.6) * 0.3) * 0.012
-      }
+      plantRef.current.rotation.x = Math.sin(t * 0.55 + phase) * 0.13
+      plantRef.current.rotation.z = Math.cos(t * 0.42 + phase) * 0.09
+      plantRef.current.position.y = Math.sin(t * 0.9 + phase) * 0.018
     }
 
+    const alertMaterials = plantRef.current?.userData.alertMaterials || []
     if (isAlerted && alertMaterials.length > 0) {
-      const intensity = preview
-        ? 0.05 + 0.08 * (0.5 + 0.5 * Math.sin(t * 1.4))
-        : 0.02 + 0.03 * (0.5 + 0.5 * Math.sin(t * 0.7))
+      const intensity = 0.05 + 0.08 * (0.5 + 0.5 * Math.sin(t * 1.4))
       for (const mat of alertMaterials) {
         mat.emissiveIntensity = intensity
       }

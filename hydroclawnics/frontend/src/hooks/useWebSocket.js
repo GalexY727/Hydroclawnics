@@ -34,6 +34,7 @@ function withHistory(podsById, incomingPods) {
         ec_ppm: Number(pod.ec_ppm || 0),
         water_temp_c: Number(pod.water_temp_c || 0),
         water_level: Number(pod.water_level || 0),
+        light_lux: Number(pod.light_lux || 0),
         timestamp,
       },
     ].slice(-MAX_HISTORY)
