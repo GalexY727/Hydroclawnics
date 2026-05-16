@@ -25,7 +25,7 @@ _SUPERVISOR_SYSTEM_PROMPT = (
     "Never contradict a table agent's active emergency response without justification."
 )
 
-_SUPERVISOR_MODEL = os.getenv("SUPERVISOR_MODEL", "nvidia/nemotron-3-super-120b-a12b")
+_SUPERVISOR_MODEL = os.getenv("SUPERVISOR_MODEL", "nvidia/nemotron-super-120b-a12b")
 _SUPERVISOR_INTERVAL_S = int(os.getenv("SUPERVISOR_INTERVAL_S", "60"))
 _NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 

@@ -35,7 +35,7 @@ unless an emergency response is already in progress
 - Critical faults (ph_crash, heat_stress) take absolute priority\
 """
 
-_TABLE_AGENT_MODEL = os.getenv("TABLE_AGENT_MODEL", "nvidia/nemotron-nano-4b-v1.1")
+_TABLE_AGENT_MODEL = os.getenv("TABLE_AGENT_MODEL", "nvidia/nemotron-3-nano-30b-a3b")
 _TABLE_INTERVAL_S = int(os.getenv("TABLE_INTERVAL_S", "20"))
 _NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
