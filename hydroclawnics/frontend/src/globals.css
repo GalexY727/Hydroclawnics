@@ -166,3 +166,12 @@ a:focus-visible {
 .drawer-open {
   transition: width 250ms ease, opacity 250ms ease;
 }
+
+/* Agent activity feed — pulsing green dot */
+@keyframes agent-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(1.4); }
+}
+.agent-pulse-dot {
+  animation: agent-pulse 2s ease-in-out infinite;
+}

@@ -20,6 +20,7 @@ export default function useCameraControls() {
   const idleTimerRef      = useRef(null)
   const lastInputTimeRef  = useRef(Date.now())
   const mouseDownTimeRef  = useRef(null)
+  const lastManualClickMs = useRef(0)
   const [showHud, setShowHud] = useState(false)
   const [mode, setMode] = useState('free')
   const [autoRotateEnabled, setAutoRotateEnabled] = useState(true)
@@ -172,5 +173,5 @@ export default function useCameraControls() {
     }
   }, [resetIdleTimer, autoRotateEnabled, resetToCenter])
 
-  return { orbitRef, mode, showHud, autoRotateEnabled, selectPod, resetToCenter, handleBackgroundClick, tick }
+  return { orbitRef, mode, showHud, autoRotateEnabled, selectPod, resetToCenter, handleBackgroundClick, tick, lastManualClickMs }
 }

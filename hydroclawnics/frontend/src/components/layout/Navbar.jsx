@@ -7,9 +7,10 @@ const statusColor = {
 }
 
 const TABS = [
-  { id: 'overview', label: 'Farm Overview' },
-  { id: 'farm',     label: '3D Farm' },
-  { id: 'settings', label: 'Settings' },
+  { id: 'overview',   label: 'Farm Overview' },
+  { id: 'farm',       label: '3D Farm' },
+  { id: 'automation', label: 'Automation' },
+  { id: 'settings',   label: 'Settings' },
 ]
 
 export default function Navbar({ connectionStatus, healthSummary, tab, onTabChange, drawerOpen, onDrawerToggle }) {

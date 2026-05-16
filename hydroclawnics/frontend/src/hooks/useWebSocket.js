@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 const WS_RETRY_MS = 2000
 const MAX_HISTORY = 20
 const MAX_AGENT_LOG = 50
+const MAX_AGENT_CYCLES = 50
 
 function withHistory(podsById, incomingPods) {
   const timestamp = new Date().toISOString()
@@ -46,6 +47,8 @@ function withHistory(podsById, incomingPods) {
 export default function useWebSocket() {
   const [pods, setPods] = useState({})
   const [agentLog, setAgentLog] = useState([])
+  const [agentCycles, setAgentCycles] = useState([])
+  const [podAgentUpdates, setPodAgentUpdates] = useState([])
   const [connectionStatus, setConnectionStatus] = useState('connecting')
   const reconnectRef = useRef(null)
   const wsRef = useRef(null)
@@ -83,6 +86,10 @@ export default function useWebSocket() {
           } else if (message.type === 'agent_decision' && message.entry) {
             // # FIX: Retain only the newest 50 decisions so the feed stays responsive during long demos.
             setAgentLog((prev) => [message.entry, ...prev].slice(0, MAX_AGENT_LOG))
+          } else if (message.type === 'agent_cycle_summary') {
+            setAgentCycles((prev) => [message, ...prev].slice(0, MAX_AGENT_CYCLES))
+          } else if (message.type === 'pod_agent_update') {
+            setPodAgentUpdates((prev) => [...prev, message])
           } else if (message.type === 'heartbeat') {
             // # FIX: Accept backend keep-alives without mutating dashboard data.
             setConnectionStatus('connected')
@@ -124,5 +131,5 @@ export default function useWebSocket() {
     }
   }, [wsUrl])
 
-  return { pods, agentLog, connectionStatus }
+  return { pods, agentLog, agentCycles, podAgentUpdates, connectionStatus }
 }
