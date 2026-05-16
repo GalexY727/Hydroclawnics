@@ -4,7 +4,17 @@ import { OrbitControls } from '@react-three/drei'
 import PodMesh from './PodMesh'
 import { deriveStage, deriveHealth } from './useFarm3D'
 
+function podIndexFromId(id) {
+  if (!id) return 0
+  const m = id.match(/(\d+)/)
+  if (m) return (parseInt(m[1], 10) - 1) % 20
+  const c = id.match(/([A-Z])/i)
+  if (c) return c[1].toUpperCase().charCodeAt(0) - 65
+  return 0
+}
+
 function PreviewScene({ pod }) {
+  const podIndex = podIndexFromId(pod.id)
   const mockMappedPod = {
     pod_id: pod.id,
     status: pod.status,
@@ -15,10 +25,16 @@ function PreviewScene({ pod }) {
   }
   return (
     <>
-      <ambientLight intensity={0.9} />
-      <directionalLight position={[-3, 6, 4]} intensity={1.1} />
-      <PodMesh pod={mockMappedPod} />
-      <OrbitControls autoRotate autoRotateSpeed={1.5} enableZoom={false} />
+      <ambientLight intensity={1.1} />
+      <directionalLight position={[-2, 4, 3]} intensity={1.4} />
+      <directionalLight position={[2, 2, -2]} intensity={0.4} />
+      <PodMesh pod={mockMappedPod} podIndex={podIndex} preview />
+      <OrbitControls
+        autoRotate
+        autoRotateSpeed={3.5}
+        enableZoom={false}
+        target={[0, 0.18, 0]}
+      />
     </>
   )
 }
@@ -28,14 +44,14 @@ export default function PlantPreview({ pod }) {
   return (
     <div
       className="mb-5 overflow-hidden rounded-md border"
-      style={{ height: 160, borderColor: 'var(--color-border)', background: '#0f1419' }}
+      style={{ height: 180, borderColor: 'var(--color-border)', background: '#0a1018' }}
     >
       <Suspense fallback={
         <div className="flex h-full items-center justify-center text-xs italic" style={{ color: 'var(--color-muted)' }}>
           Loading preview...
         </div>
       }>
-        <Canvas camera={{ position: [3, 3, 4], fov: 45 }}>
+        <Canvas camera={{ position: [0.7, 0.45, 1.15], fov: 52 }}>
           <PreviewScene pod={pod} />
         </Canvas>
       </Suspense>
