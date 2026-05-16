@@ -63,8 +63,12 @@ def remove_client(client: WebSocket) -> None:
 async def broadcast(message: dict) -> None:
     if not clients:
         return
+    from agent.action_log import safe_json_serialize, validate_event
     stale: list[WebSocket] = []
-    payload = json.dumps(message)
+    payload_obj = validate_event(message) if message.get("type") in {
+        "agent_cycle_summary", "pod_agent_update", "agent_action",
+    } else safe_json_serialize(message)
+    payload = json.dumps(payload_obj)
     for client in list(clients):
         try:
             # FIX: Serialize per-client sends so heartbeat and simulator broadcasts cannot race each other.
@@ -184,7 +188,13 @@ async def post_action(request: Request) -> dict:
     except Exception:
         return {"ok": False, "error": "invalid JSON"}
     state.append_decision(entry)
-    await broadcast({"type": "agent_decision", "entry": entry})
+    if entry.get("type") in {"agent_cycle_summary", "pod_agent_update", "agent_action"}:
+        if entry.get("type") == "pod_agent_update":
+            from agent import action_log as _alog
+            await _alog.remember_pod_action(entry)
+        await broadcast(entry)
+    else:
+        await broadcast({"type": "agent_decision", "entry": entry})
     return {"ok": True}
 
 
@@ -217,6 +227,12 @@ async def agent_status() -> dict:
 async def agent_logs() -> list[dict]:
     from agent import message_bus as _mb
     return _mb.get_recent_actions(50)
+
+
+@app.get("/agent/pod/{pod_id}/reasoning")
+async def pod_reasoning(pod_id: str) -> dict:
+    from agent import action_log as _alog
+    return await _alog.get_pod_reasoning(pod_id)
 
 
 @app.post("/api/agent/thought")
