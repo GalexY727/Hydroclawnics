@@ -44,25 +44,25 @@ function PodCard({ pod, onSelect }) {
         background: bg,
         borderColor: 'var(--color-border)',
         borderLeftColor: borderColor,
-        borderLeftWidth: 3,
+        borderLeftWidth: 4,
       }}
     >
-      <div className="p-2.5">
-        <div className="mb-0.5 flex min-w-0 items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.08em]" style={{ color: 'var(--color-muted)' }}>
+      <div className="p-3.5">
+        <div className="mb-1 flex min-w-0 items-center gap-2 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: 'var(--color-muted)' }}>
           {pod.crop ? (
             <>
-              <CropIcon crop={pod.crop} className="h-4 w-4" />
+              <CropIcon crop={pod.crop} className="h-5 w-5" />
               <span className="truncate">{pod.crop}</span>
             </>
           ) : '—'}
         </div>
-        <div className="mb-1.5 flex items-baseline justify-between gap-1">
-          <span className="text-[12px] font-bold leading-none" style={{ color: 'var(--color-text)' }}>
+        <div className="mb-2.5 flex items-baseline justify-between gap-2">
+          <span className="text-base font-bold leading-none" style={{ color: 'var(--color-text)' }}>
             {pod.id}
           </span>
           {hasFault && (
             <span
-              className="truncate text-[9px] font-bold leading-none"
+              className="truncate text-[11px] font-bold leading-none"
               style={{ color: pod.status === 'critical' ? 'var(--color-critical)' : 'var(--color-warning)' }}
             >
               {pod.fault_type}
@@ -70,7 +70,7 @@ function PodCard({ pod, onSelect }) {
           )}
         </div>
 
-        <div className="grid grid-cols-[auto_1fr_auto_1fr] items-baseline gap-x-1.5 gap-y-0.5">
+        <div className="grid grid-cols-[auto_1fr_auto_1fr] items-baseline gap-x-2 gap-y-1">
           {([
             ['pH',  (Number(pod.ph) || 0).toFixed(2)],
             ['EC',  `${Math.round(Number(pod.ec_ppm) || 0)}`],
@@ -78,18 +78,18 @@ function PodCard({ pod, onSelect }) {
             ['RH',  `${Math.round(Number(pod.humidity) || 0)}%`],
           ]).map(([label, val]) => (
             <div key={label} className="contents">
-              <span className="text-[9px]" style={{ color: 'var(--color-muted)' }}>{label}</span>
-              <span className="text-right font-mono text-[10px] font-semibold" style={{ color: 'var(--color-text)' }}>{val}</span>
+              <span className="text-[11px]" style={{ color: 'var(--color-muted)' }}>{label}</span>
+              <span className="text-right font-mono text-xs font-semibold" style={{ color: 'var(--color-text)' }}>{val}</span>
             </div>
           ))}
         </div>
 
-        <div className="mt-1.5">
-          <div className="mb-1 flex justify-between text-[9px]" style={{ color: 'var(--color-muted)' }}>
+        <div className="mt-2.5">
+          <div className="mb-1 flex justify-between text-[11px]" style={{ color: 'var(--color-muted)' }}>
             <span>Water</span>
             <span className="font-semibold" style={{ color: 'var(--color-text)' }}>{waterPct}%</span>
           </div>
-          <div className="h-[3px] overflow-hidden rounded-sm" style={{ background: 'var(--color-surface-2)' }}>
+          <div className="h-1 overflow-hidden rounded-sm" style={{ background: 'var(--color-surface-2)' }}>
             <div
               className="h-full rounded-sm transition-[width] duration-300"
               style={{ width: `${waterPct}%`, background: WATER_COLOR(waterPct) }}
@@ -114,8 +114,8 @@ function Toolbar({ grid, cropTypes }) {
 
   return (
     <div
-      className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2"
-      style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}
+      className="mb-4 flex flex-wrap items-center gap-2.5 rounded-lg border px-4 py-3"
+      style={{ background: 'var(--color-panel)', borderColor: 'var(--color-border-strong)' }}
     >
       <div className="flex flex-wrap items-center gap-1.5">
         {([
@@ -128,7 +128,7 @@ function Toolbar({ grid, cropTypes }) {
             key={id}
             type="button"
             onClick={() => setStatusFilter(id)}
-            className="rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-all duration-150"
+            className="rounded-full border px-3 py-1.5 text-xs font-semibold transition-all duration-150"
             style={{
               background: statusFilter === id ? color : 'var(--color-surface-2)',
               color: statusFilter === id ? 'var(--color-bg)' : 'var(--color-muted)',
@@ -149,7 +149,7 @@ function Toolbar({ grid, cropTypes }) {
           key={crop}
           type="button"
           onClick={() => toggleCrop(crop)}
-          className="rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-all duration-150 capitalize"
+          className="rounded-full border px-3 py-1.5 text-xs font-semibold transition-all duration-150 capitalize"
           style={{
             background: cropFilter.includes(crop) ? 'var(--color-info)' : 'var(--color-surface-2)',
             color: cropFilter.includes(crop) ? 'var(--color-bg)' : 'var(--color-muted)',
@@ -157,7 +157,7 @@ function Toolbar({ grid, cropTypes }) {
           }}
         >
           <span className="inline-flex items-center gap-1.5">
-            <CropIcon crop={crop} className="h-4 w-4" />
+            <CropIcon crop={crop} className="h-5 w-5" />
             <span>{crop}</span>
           </span>
         </button>
@@ -167,13 +167,13 @@ function Toolbar({ grid, cropTypes }) {
       <select
         value={sort}
         onChange={e => setSort(e.target.value)}
-        className="rounded-md border px-2 py-1 text-[11px] font-semibold"
+        className="rounded-md border px-3 py-1.5 text-xs font-semibold"
         style={{ background: 'var(--color-surface-2)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
       >
         {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
 
-      <span className="ml-auto text-[11px]" style={{ color: 'var(--color-muted)' }}>
+      <span className="ml-auto text-xs" style={{ color: 'var(--color-muted)' }}>
         {total} pod{total !== 1 ? 's' : ''}
       </span>
     </div>
@@ -192,8 +192,8 @@ function Pagination({ page, totalPages, setPage, perPage, setPerPage, total }) {
   }, [page, totalPages])
 
   return (
-    <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-      <span className="text-[11px]" style={{ color: 'var(--color-muted)' }}>
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3" style={{ background: 'var(--color-panel)', borderColor: 'var(--color-border)' }}>
+      <span className="text-xs" style={{ color: 'var(--color-muted)' }}>
         Pods <strong style={{ color: 'var(--color-text)' }}>{start}–{end}</strong> of <strong style={{ color: 'var(--color-text)' }}>{total}</strong>
       </span>
 
@@ -202,19 +202,19 @@ function Pagination({ page, totalPages, setPage, perPage, setPerPage, total }) {
           type="button"
           onClick={() => setPage(p => Math.max(1, p - 1))}
           disabled={page === 1}
-          className="grid h-7 w-7 place-items-center rounded-md border text-sm transition-colors disabled:opacity-30"
+          className="grid h-8 w-8 place-items-center rounded-md border text-base transition-colors disabled:opacity-30"
           style={{ background: 'var(--color-surface-2)', borderColor: 'var(--color-border)', color: 'var(--color-muted)' }}
         >‹</button>
 
         {pages.map((p, i) =>
           p === '…'
-            ? <span key={`e${i}`} className="px-1 text-xs" style={{ color: 'var(--color-muted)' }}>…</span>
+            ? <span key={`e${i}`} className="px-1 text-sm" style={{ color: 'var(--color-muted)' }}>…</span>
             : (
               <button
                 key={p}
                 type="button"
                 onClick={() => setPage(p)}
-                className="grid h-7 w-7 place-items-center rounded-md border text-xs font-semibold transition-colors"
+                className="grid h-8 w-8 place-items-center rounded-md border text-sm font-semibold transition-colors"
                 style={{
                   background: page === p ? 'var(--color-info)' : 'var(--color-surface-2)',
                   color: page === p ? 'var(--color-bg)' : 'var(--color-muted)',
@@ -228,17 +228,17 @@ function Pagination({ page, totalPages, setPage, perPage, setPerPage, total }) {
           type="button"
           onClick={() => setPage(p => Math.min(totalPages, p + 1))}
           disabled={page === totalPages}
-          className="grid h-7 w-7 place-items-center rounded-md border text-sm transition-colors disabled:opacity-30"
+          className="grid h-8 w-8 place-items-center rounded-md border text-base transition-colors disabled:opacity-30"
           style={{ background: 'var(--color-surface-2)', borderColor: 'var(--color-border)', color: 'var(--color-muted)' }}
         >›</button>
       </div>
 
       <div className="flex items-center gap-1.5">
-        <span className="text-[11px]" style={{ color: 'var(--color-muted)' }}>Per page</span>
+        <span className="text-xs" style={{ color: 'var(--color-muted)' }}>Per page</span>
         <select
           value={perPage}
           onChange={e => setPerPage(Number(e.target.value))}
-          className="rounded-md border px-2 py-1 text-[11px]"
+          className="rounded-md border px-3 py-1.5 text-xs"
           style={{ background: 'var(--color-surface-2)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
         >
           {[12, 24, 48].map(n => <option key={n} value={n}>{n}</option>)}
@@ -266,7 +266,7 @@ export default function PodGrid({ pods, onSelect }) {
       <Toolbar grid={grid} cropTypes={cropTypes} />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
           {physicalPod && (
             <div className="col-span-2">
               <PhysicalPot pods={pods} />

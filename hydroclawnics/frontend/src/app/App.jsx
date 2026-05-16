@@ -32,9 +32,9 @@ export default function App() {
 
   // Farm3D is always mounted to preserve the WebGL context.
   const farmStyle = isFarmTab
-    ? { flex: 1, minHeight: 0, padding: 12 }
+    ? { flex: 1, minHeight: 0, padding: 16 }
     : isAutomationTab
-      ? { width: '60%', flexShrink: 0, minHeight: 0, padding: 12 }
+      ? { width: '58%', flexShrink: 0, minHeight: 0, padding: 16 }
       : { position: 'fixed', left: -9999, top: 0, width: 1, height: 1, overflow: 'hidden', pointerEvents: 'none' }
 
   return (
@@ -64,7 +64,7 @@ export default function App() {
 
         {/* Overview / Settings content */}
         {!isAutomationTab && !isFarmTab && (
-          <main className="min-h-0 flex-1 overflow-hidden p-3">
+          <main className="min-h-0 flex-1 overflow-hidden p-4">
             {tab === 'overview' && (
               <div key="overview" className="tab-enter h-full">
                 <PodGrid pods={pods} onSelect={setDetailPodId} />
@@ -81,8 +81,8 @@ export default function App() {
         {/* Automation right panel (40%) */}
         {isAutomationTab && (
           <div
-            className="shrink-0 overflow-y-auto p-3"
-            style={{ width: '40%', minHeight: 0, borderLeft: '1px solid var(--color-border)' }}
+            className="shrink-0 overflow-y-auto p-4"
+            style={{ width: '42%', minHeight: 0, borderLeft: '1px solid var(--color-border-strong)', background: 'var(--color-panel)' }}
           >
             <AgentActivityFeed agentCycles={agentCycles} connectionStatus={connectionStatus} />
           </div>
@@ -91,8 +91,8 @@ export default function App() {
         {/* AgentLog drawer — hidden on automation tab */}
         {drawerOpen && !isAutomationTab && (
           <aside
-            className="drawer-open hidden shrink-0 border-l p-3 lg:block"
-            style={{ width: 280, borderColor: 'var(--color-border)' }}
+            className="drawer-open hidden shrink-0 border-l p-4 lg:block"
+            style={{ width: 340, borderColor: 'var(--color-border-strong)', background: 'var(--color-panel)' }}
           >
             <AgentLog entries={agentLog} connectionStatus={connectionStatus} pods={pods} />
           </aside>

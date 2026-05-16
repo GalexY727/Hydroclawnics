@@ -1,4 +1,4 @@
-import lettuceLogo from '../../../../../media/lettuce.png'
+import appIcon from '../../../../../media/icon.ico'
 
 const statusColor = {
   connected: 'var(--color-success)',
@@ -18,14 +18,14 @@ export default function Navbar({ connectionStatus, healthSummary, tab, onTabChan
 
   return (
     <header
-      className="flex h-14 shrink-0 items-center gap-4 border-b px-3 md:px-4"
-      style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)' }}
+      className="flex h-16 shrink-0 items-center gap-5 border-b px-4 md:px-5"
+      style={{ background: 'var(--color-panel)', borderColor: 'var(--color-border-strong)' }}
     >
       <div className="flex shrink-0 items-center gap-2.5">
-        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md border p-1" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
-          <img src={lettuceLogo} alt="" className="h-full w-full object-contain" />
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md border p-1.5" style={{ borderColor: 'var(--color-border-strong)', background: 'var(--color-surface)' }}>
+          <img src={appIcon} alt="" className="h-full w-full object-contain" />
         </div>
-        <span className="hidden text-base font-semibold tracking-[-0.8px] sm:block" style={{ color: 'var(--color-text)' }}>
+        <span className="hidden text-lg font-semibold sm:block" style={{ color: 'var(--color-text)' }}>
           Hydro
             <span style={{ background: 'linear-gradient(135deg, #ff69b4, #ff1493, #ff69b4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
                 claw
@@ -35,7 +35,7 @@ export default function Navbar({ connectionStatus, healthSummary, tab, onTabChan
       </div>
 
       <nav
-        className="flex items-center gap-1 rounded-full border p-1"
+        className="flex items-center gap-1.5 rounded-full border p-1.5"
         style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)' }}
         aria-label="Main navigation"
       >
@@ -46,7 +46,7 @@ export default function Navbar({ connectionStatus, healthSummary, tab, onTabChan
               key={t.id}
               type="button"
               onClick={() => onTabChange(t.id)}
-              className="rounded-full px-3 py-1 text-xs font-semibold transition-all duration-200"
+              className="rounded-full px-3.5 py-1.5 text-sm font-semibold transition-all duration-200"
               style={{
                 background: active ? 'var(--color-info)' : 'transparent',
                 color: active ? 'var(--color-bg)' : 'var(--color-muted)',
@@ -58,7 +58,7 @@ export default function Navbar({ connectionStatus, healthSummary, tab, onTabChan
         })}
       </nav>
 
-      <div className="ml-auto flex shrink-0 items-center gap-3 text-xs" style={{ color: 'var(--color-muted)' }}>
+      <div className="ml-auto flex shrink-0 items-center gap-4 text-sm" style={{ color: 'var(--color-muted)' }}>
         <div className="hidden items-center gap-3 sm:flex">
           <span className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full" style={{ background: 'var(--color-success)' }} />
@@ -82,7 +82,7 @@ export default function Navbar({ connectionStatus, healthSummary, tab, onTabChan
         <button
           type="button"
           onClick={onDrawerToggle}
-          className="grid h-8 w-8 place-items-center rounded-md transition-colors"
+          className="grid h-9 w-9 place-items-center rounded-md transition-colors"
           style={{ background: drawerOpen ? 'var(--color-hover)' : 'transparent' }}
           aria-label="Toggle agent log"
         >

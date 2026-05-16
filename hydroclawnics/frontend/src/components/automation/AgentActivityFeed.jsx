@@ -51,29 +51,29 @@ function CycleCard({ cycle }) {
       style={{
         background: 'var(--color-surface)',
         borderColor: 'var(--color-border)',
-        borderLeft: `3px solid ${borderColor(cycle)}`,
-        padding: '10px 12px',
+        borderLeft: `4px solid ${borderColor(cycle)}`,
+        padding: '14px 16px',
       }}
       onClick={() => setExpanded(e => !e)}
     >
       <div className="flex items-center justify-between mb-1">
-        <span style={{ color: 'var(--color-muted)', fontSize: 11 }}>{formatTs(cycle.ts)}</span>
-        <span style={{ color: 'var(--color-muted)', fontSize: 11 }}>{cycle.duration_ms != null ? `${cycle.duration_ms}ms` : ''}</span>
+        <span style={{ color: 'var(--color-muted)', fontSize: 12 }}>{formatTs(cycle.ts)}</span>
+        <span style={{ color: 'var(--color-muted)', fontSize: 12 }}>{cycle.duration_ms != null ? `${cycle.duration_ms}ms` : ''}</span>
       </div>
 
-      <p style={{ fontWeight: 500, fontSize: 13, color: 'var(--color-text)', marginBottom: 6, lineHeight: 1.45 }}>
+      <p style={{ fontWeight: 500, fontSize: 15, color: 'var(--color-text)', marginBottom: 8, lineHeight: 1.5 }}>
         {cycle.summary_text ?? 'No summary'}
       </p>
 
       {((cycle.critical_zones?.length ?? 0) + (cycle.warning_zones?.length ?? 0)) > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
           {(cycle.critical_zones ?? []).map(z => (
-            <span key={z} style={{ background: '#c47a7a22', color: '#c47a7a', border: '1px solid #c47a7a55', borderRadius: 99, fontSize: 10, padding: '1px 7px' }}>
+            <span key={z} style={{ background: '#c47a7a22', color: '#c47a7a', border: '1px solid #c47a7a55', borderRadius: 99, fontSize: 12, padding: '2px 8px' }}>
               {z}
             </span>
           ))}
           {(cycle.warning_zones ?? []).map(z => (
-            <span key={z} style={{ background: '#c8a84b22', color: '#c8a84b', border: '1px solid #c8a84b55', borderRadius: 99, fontSize: 10, padding: '1px 7px' }}>
+            <span key={z} style={{ background: '#c8a84b22', color: '#c8a84b', border: '1px solid #c8a84b55', borderRadius: 99, fontSize: 12, padding: '2px 8px' }}>
               {z}
             </span>
           ))}
@@ -84,15 +84,15 @@ function CycleCard({ cycle }) {
         <div className="flex flex-col gap-2 mt-2 pt-2" style={{ borderTop: '1px solid var(--color-border)' }}>
           {actions.map((a, i) => (
             <div key={i} className="flex items-start gap-2">
-              <span style={{ background: 'var(--color-surface-2)', color: 'var(--color-info)', border: '1px solid var(--color-border)', borderRadius: 99, fontSize: 10, padding: '1px 7px', whiteSpace: 'nowrap', flexShrink: 0 }}>
+              <span style={{ background: 'var(--color-surface-2)', color: 'var(--color-info)', border: '1px solid var(--color-border)', borderRadius: 99, fontSize: 12, padding: '2px 8px', whiteSpace: 'nowrap', flexShrink: 0 }}>
                 {a.pod_id}
               </span>
               <div>
-                <span style={{ color: 'var(--color-text)', fontSize: 12, fontWeight: 500 }}>
+                <span style={{ color: 'var(--color-text)', fontSize: 14, fontWeight: 500 }}>
                   {toolLabel(a.tool, a.params)}
                 </span>
                 {a.reason && (
-                  <p style={{ color: 'var(--color-muted)', fontSize: 11, marginTop: 1, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                  <p style={{ color: 'var(--color-muted)', fontSize: 13, marginTop: 2, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                     {a.reason}
                   </p>
                 )}
@@ -103,7 +103,7 @@ function CycleCard({ cycle }) {
       )}
 
       {expanded && actions.length === 0 && (
-        <p style={{ color: 'var(--color-muted)', fontSize: 11, fontStyle: 'italic', marginTop: 6 }}>No actions this cycle</p>
+        <p style={{ color: 'var(--color-muted)', fontSize: 13, fontStyle: 'italic', marginTop: 8 }}>No actions this cycle</p>
       )}
     </div>
   )
@@ -114,17 +114,17 @@ export default function AgentActivityFeed({ agentCycles, connectionStatus }) {
 
   return (
     <div className="flex flex-col h-full" style={{ minHeight: 0 }}>
-      <div className="flex items-center gap-2 mb-3 shrink-0">
-        <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-text)' }}>Agent Activity</span>
+      <div className="flex items-center gap-2 mb-4 shrink-0">
+        <span style={{ fontWeight: 600, fontSize: 17, color: 'var(--color-text)' }}>Agent Activity</span>
         {isRunning && (
           <span className="agent-pulse-dot" style={{ width: 8, height: 8, borderRadius: '50%', background: '#7aad7a', flexShrink: 0 }} />
         )}
       </div>
 
-      <div className="flex flex-col gap-2 overflow-y-auto flex-1" style={{ minHeight: 0 }}>
+      <div className="flex flex-col gap-3 overflow-y-auto flex-1" style={{ minHeight: 0 }}>
         {agentCycles.length === 0 ? (
           <div className="flex items-center justify-center flex-1">
-            <p style={{ color: 'var(--color-muted)', fontStyle: 'italic', fontSize: 13, textAlign: 'center' }}>
+            <p style={{ color: 'var(--color-muted)', fontStyle: 'italic', fontSize: 15, textAlign: 'center' }}>
               Waiting for first agent cycle...
             </p>
           </div>

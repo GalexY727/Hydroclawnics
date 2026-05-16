@@ -34,21 +34,21 @@ function MetricRow({ label, value, displayValue, rangeText, range, accent = 'var
     <div className="space-y-2">
       <div className="flex items-baseline justify-between gap-2">
         <div className="flex items-baseline gap-1 flex-1 min-w-0">
-          <span className="text-xs font-medium flex-shrink-0" style={{ color: 'var(--color-muted)' }}>
+          <span className="text-sm font-medium flex-shrink-0" style={{ color: 'var(--color-muted)' }}>
             {label}
           </span>
-          <span className="font-mono text-base font-bold" style={{ color: 'var(--color-text)' }}>
+          <span className="font-mono text-lg font-bold" style={{ color: 'var(--color-text)' }}>
             {displayValue}
           </span>
         </div>
-        <span className="text-[10px] flex-shrink-0" style={{ color: metricStatus === 'ok' ? 'var(--color-success)' : 'var(--color-warning)' }}>
+        <span className="text-xs flex-shrink-0" style={{ color: metricStatus === 'ok' ? 'var(--color-success)' : 'var(--color-warning)' }}>
           {metricStatus === 'ok' ? '✓' : '×'}
         </span>
       </div>
-      <div className="text-[11px] leading-tight" style={{ color: 'var(--color-muted)' }}>
+      <div className="text-xs leading-tight" style={{ color: 'var(--color-muted)' }}>
         {rangeText}
       </div>
-      <div className="h-[3px] overflow-hidden rounded-full" style={{ background: 'var(--color-surface-2)' }}>
+      <div className="h-1 overflow-hidden rounded-full" style={{ background: 'var(--color-surface-2)' }}>
         <div className="h-full rounded-full transition-all duration-300" style={{ width: `${clamped}%`, background: metricStatus === 'ok' ? accent : 'var(--color-warning)' }} />
       </div>
     </div>
@@ -61,34 +61,34 @@ export default function PhysicalPot({ pods }) {
   const ecMs = Number(pod?.ec_ppm || 0) / 1000
 
   return (
-    <div className="h-full rounded-lg border p-3" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
-      <div className="mb-3 flex items-start justify-between gap-3">
+    <div className="h-full rounded-lg border p-4" style={{ borderColor: 'var(--color-border-strong)', background: 'var(--color-surface)' }}>
+      <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-medium" style={{ color: 'var(--color-muted)' }}>
+          <h2 className="text-base font-semibold" style={{ color: 'var(--color-text)' }}>
             Pot Alpha (Physical)
           </h2>
           {pod ? (
-            <p className="mt-1 flex items-center gap-1.5 text-xs capitalize" style={{ color: 'var(--color-muted)' }}>
+            <p className="mt-1 flex items-center gap-1.5 text-sm capitalize" style={{ color: 'var(--color-muted)' }}>
               <span>{pod.id}</span>
               <span>·</span>
               <CropIcon crop={pod.crop} className="h-4 w-4" />
               <span>{pod.crop}</span>
             </p>
           ) : (
-            <p className="mt-1 text-xs" style={{ color: 'var(--color-muted)' }}>
+            <p className="mt-1 text-sm" style={{ color: 'var(--color-muted)' }}>
               Waiting for live pod data
             </p>
           )}
         </div>
         {pod && (
-          <span className="rounded-full px-2.5 py-1 text-xs font-bold uppercase tracking-[0.02em]" style={statusStyles[status] || statusStyles.healthy}>
+          <span className="rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-[0.02em]" style={statusStyles[status] || statusStyles.healthy}>
             {status}
           </span>
         )}
       </div>
 
       {pod ? (
-        <div className="grid gap-3 lg:grid-cols-3">
+        <div className="grid gap-4 lg:grid-cols-3">
           <MetricRow label="pH" value={pod.ph} displayValue={formatNumber(pod.ph, 2)} rangeText="[range 6.0-7.0]" range={metricRanges.ph} />
           <MetricRow label="EC" value={ecMs} displayValue={`${formatNumber(ecMs, 1)} ppm`} rangeText="[range 0.8-1.2]" range={metricRanges.ec} accent="var(--color-info)" />
           <MetricRow label="Temp" value={pod.water_temp_c} displayValue={`${formatNumber(pod.water_temp_c, 0)}°C`} rangeText="[range 18-24]" range={metricRanges.temp} accent="var(--color-warning)" />
@@ -98,10 +98,6 @@ export default function PhysicalPot({ pods }) {
           No sensor data available
         </div>
       )}
-
-      <p className="mt-3 truncate text-xs italic" style={{ color: 'var(--color-muted)' }}>
-        {pod?.last_action || 'No physical intervention logged yet'}
-      </p>
     </div>
   )
 }
