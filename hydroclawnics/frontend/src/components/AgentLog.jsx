@@ -41,13 +41,13 @@ export default function AgentLog({ entries, pods = {} }) {
             const isExpanded = Boolean(expanded[key])
             const shouldTruncate = reasoning.length > REASONING_PREVIEW_CHARS
             const visibleReasoning = isExpanded || !shouldTruncate ? reasoning : `${reasoning.slice(0, REASONING_PREVIEW_CHARS)}`
-            const crop = entry.pod_id ? pods[entry.pod_id]?.crop : null
+            const crop = (entry.pod_id ? pods[entry.pod_id]?.crop : null) ?? entry.crop ?? null
 
             return (
               <article key={key} className="log-entry border-b py-3 first:pt-0 last:border-b-0" style={{ borderColor: 'var(--color-border)' }}>
                 <div className="mb-1.5 flex flex-wrap items-center gap-2">
                   {(() => {
-                    const podStatus = entry.pod_id ? pods[entry.pod_id]?.status : null
+                    const podStatus = (entry.pod_id ? pods[entry.pod_id]?.status : null) ?? entry.status ?? null
                     return podStatus ? (
                       <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: STATUS_DOT_COLOR[podStatus] || STATUS_DOT_COLOR.healthy }} />
                     ) : null

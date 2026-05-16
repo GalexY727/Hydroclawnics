@@ -364,6 +364,7 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
         raw_reasoning=reasoning_text,
         cycle_duration_ms=cycle_ms,
         cycle_id=cycle_id,
+        crop=CROP_MAP.get(table_id),
     )
     asyncio.create_task(alog.broadcast_action(cycle_entry))
 

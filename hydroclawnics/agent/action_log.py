@@ -179,19 +179,66 @@ def log(
     with LOG_FILE.open("a", encoding="utf-8") as fp:
         fp.write(json.dumps(entry) + "\n")
 
-    decision = {
-        "timestamp": entry["ts"],
-        "pod_id": entry.get("table_id") or "supervisor",
-        "sensor_state": entry.get("params") or {},
-        "diagnosis": entry.get("reasoning") or "",
-        "action": entry["tool"],
-        "reasoning": entry.get("reasoning") or "",
-    }
-    DECISIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with DECISIONS_FILE.open("a", encoding="utf-8") as fp:
-        fp.write(json.dumps(decision) + "\n")
+    # Only write supervisor entries to decisions.jsonl; table cycles write their own
+    # entry via log_cycle() so per-tool-call writes would cause duplicates/noise.
+    if agent_type == "supervisor":
+        farm_summary = (entry.get("params") or {}).get("farm_health_summary") or ""
+        directive_count = (entry.get("params") or {}).get("directive_count", 0)
+        decision = {
+            "timestamp": entry["ts"],
+            "pod_id": "supervisor",
+            "sensor_state": {},
+            "diagnosis": truncate_words(farm_summary or "Farm status assessed", 200),
+            "action": f"issue_directives ({directive_count})" if directive_count else entry["tool"],
+            "reasoning": truncate_words(entry.get("reasoning") or "", 600),
+        }
+        DECISIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with DECISIONS_FILE.open("a", encoding="utf-8") as fp:
+            fp.write(json.dumps(decision) + "\n")
 
     return entry
+
+
+def _build_decision_entry(
+    zone_id: str,
+    status: str,
+    observations: list[dict],
+    actions: list[dict],
+    raw_reasoning: str,
+    ts: str,
+    cycle_id: str = "",
+    crop: str | None = None,
+) -> dict:
+    out_of_range = [
+        f"{o.get('param', '')}: {o.get('value', '')} ({o.get('flag', '')})"
+        for o in (observations or [])
+        if o.get("flag", "").upper() not in ("IN RANGE", "")
+    ]
+    diagnosis = "; ".join(out_of_range) if out_of_range else "All parameters within range"
+
+    real_actions = [a for a in (actions or []) if a.get("tool") != "no_op"]
+    action_str = ", ".join(a.get("tool", "") for a in real_actions) if real_actions else "no_op"
+
+    raw = (raw_reasoning or "").strip()
+    if raw and raw not in ("all parameters within range",) and len(raw) > 20:
+        reasoning = raw
+    elif real_actions:
+        reasons = [a.get("reason", "") for a in real_actions if (a.get("reason") or "").strip()]
+        reasoning = "; ".join(reasons) if reasons else f"Applied {action_str}."
+    else:
+        reasoning = "All parameters within range. No intervention needed."
+
+    return {
+        "timestamp": ts,
+        "pod_id": zone_id,
+        "sensor_state": {},
+        "diagnosis": truncate_words(diagnosis, 200),
+        "action": action_str,
+        "reasoning": truncate_words(reasoning, 600),
+        "status": status,
+        "crop": crop or "",
+        "cycle_id": cycle_id,
+    }
 
 
 def _summary_text(actions: list[dict], zones_evaluated: int) -> str:
@@ -255,6 +302,7 @@ def log_cycle(
     raw_reasoning: str,
     cycle_duration_ms: int,
     cycle_id: str | None = None,
+    crop: str | None = None,
 ) -> dict:
     safe_cycle_id = cycle_id or str(uuid4())
     safe_actions = [
@@ -294,7 +342,17 @@ def log_cycle(
         fp.write(json.dumps(entry) + "\n")
     DECISIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
     with DECISIONS_FILE.open("a", encoding="utf-8") as fp:
-        fp.write(json.dumps(entry) + "\n")
+        decision = _build_decision_entry(
+            zone_id=zone_id,
+            status=entry["status"],
+            observations=observations,
+            actions=safe_actions,
+            raw_reasoning=raw_reasoning,
+            ts=entry["ts"],
+            cycle_id=safe_cycle_id,
+            crop=crop,
+        )
+        fp.write(json.dumps(decision) + "\n")
     return entry
 
 
