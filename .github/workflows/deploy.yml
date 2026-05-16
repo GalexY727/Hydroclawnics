@@ -22,4 +22,4 @@ jobs:
           ssh-keyscan -H "$BREV_HOST" >> ~/.ssh/known_hosts
 
           ssh -i ~/.ssh/deploy_key "${BREV_USER:-ubuntu}@$BREV_HOST" \
-            "NVIDIA_API_KEY=$NVIDIA_API_KEY bash /home/ubuntu/Hydroclawnics-Simulation/deploy.sh"
+            "cd /home/ubuntu/Hydroclawnics-Simulation && git pull origin main && NVIDIA_API_KEY=$NVIDIA_API_KEY bash deploy.sh"
