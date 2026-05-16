@@ -75,16 +75,17 @@ SPINACH:
    humidity > 80%                          → enter_high_humidity_mode(pod_id)
    humidity 70–80%                         → turn_fan_on + set_fan_speed(pod_id, 40)
    humidity < 45%                          → turn_humidifier_on(pod_id)
-   ph > target_max                         → dose_acid(pod_id, amount_ml=10)
-   ph < target_min                         → dose_base(pod_id, amount_ml=10)
-   ec_ppm > target_max                     → flush_reservoir(pod_id, flush_percent=20)
-   ec_ppm < target_min                     → dose_nutrients(pod_id, amount_ml=50)
+   ph > target_max                         → dose_acid(pod_id, amount_ml=(ph - target_mid) / 0.02)
+   ph < target_min                         → dose_base(pod_id, amount_ml=(target_mid - ph) / 0.02)
+   ec_ppm > target_max                     → flush_reservoir(pod_id, flush_percent=100 * (1 - target_mid / ec_ppm))
+   ec_ppm < target_min                     → dose_nutrients(pod_id, amount_ml=(target_mid - ec_ppm))
    water_level < 40%                       → flag critical; log "refill reservoir"
    water_level < 60% (or 65% for tomato)  → log "top up reservoir soon"
 4. If ALL parameters are within range and no supervisor directives: do NOT call tools.
 5. NEVER run heater and cooler simultaneously in the same zone.
 6. NEVER spend more than 3 sentences reasoning. Format: OBSERVATION → DECISION → ACTION.
-7. When a supervisor directive arrives, act on it immediately even if readings appear healthy.
+7. Use the current faulted pod value to calculate the dose/flush amount needed to return to the middle of the crop target range. Round up slightly so the corrected reading is stable, not barely at the edge.
+8. When a supervisor directive arrives, act on it immediately even if readings appear healthy.
    The only exception: an active emergency response is already in progress.
 
 ## OUTPUT FORMAT (strict — every response must follow this)
@@ -105,17 +106,23 @@ _TABLE_AGENT_MODEL = os.getenv("TABLE_AGENT_MODEL", "nvidia/nemotron-3-super-120
 _TABLE_INTERVAL_S = int(os.getenv("TABLE_INTERVAL_S", "20"))
 _NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
-_FAULT_REPAIR_TOOLS: dict[str, tuple[str, dict]] = {
-    "ph_crash": ("dose_base", {"amount_ml": 25}),
-    "ph_low": ("dose_base", {"amount_ml": 15}),
-    "ph_high": ("dose_acid", {"amount_ml": 15}),
-    "nutrient_spike": ("flush_reservoir", {"flush_percent": 30}),
-    "ec_high": ("flush_reservoir", {"flush_percent": 30}),
-    "nutrient_low": ("dose_nutrients", {"amount_ml": 100}),
-    "ec_low": ("dose_nutrients", {"amount_ml": 100}),
-    "heat_stress": ("enter_heat_stress_mode", {}),
-    "temp_high": ("enter_heat_stress_mode", {}),
-    "humidity_high": ("enter_high_humidity_mode", {}),
+_CROP_TARGETS: dict[str, dict[str, tuple[float, float]]] = {
+    "lettuce": {"ph": (5.5, 6.2), "ec_ppm": (560.0, 1260.0), "temp_c": (18.0, 24.0)},
+    "basil": {"ph": (5.5, 6.5), "ec_ppm": (700.0, 1120.0), "temp_c": (21.0, 26.0)},
+    "tomato": {"ph": (5.5, 6.5), "ec_ppm": (1400.0, 3500.0), "temp_c": (20.0, 26.0)},
+    "spinach": {"ph": (6.0, 7.0), "ec_ppm": (1260.0, 1610.0), "temp_c": (15.0, 21.0)},
+}
+
+_FAULT_METRICS: dict[str, str] = {
+    "ph_crash": "ph",
+    "ph_low": "ph",
+    "ph_high": "ph",
+    "nutrient_spike": "ec_ppm",
+    "ec_high": "ec_ppm",
+    "nutrient_low": "ec_ppm",
+    "ec_low": "ec_ppm",
+    "heat_stress": "temp_c",
+    "temp_high": "temp_c",
 }
 
 
@@ -189,8 +196,41 @@ def _build_prompt(
     return "\n".join(lines)
 
 
+def _target_midpoint(crop: str, metric: str) -> float:
+    lo, hi = _CROP_TARGETS.get(crop, _CROP_TARGETS["lettuce"])[metric]
+    return (lo + hi) / 2.0
+
+
+def _dynamic_repair_for_fault(pod: dict) -> tuple[str, dict, str] | None:
+    fault = pod.get("fault_type", "none")
+    crop = pod.get("crop", "lettuce")
+    metric = _FAULT_METRICS.get(fault)
+    if metric is None:
+        return ("enter_high_humidity_mode", {}, "active humidity fault") if fault == "humidity_high" else None
+
+    target = _target_midpoint(crop, metric)
+    value = float(pod.get(metric, pod.get("air_temp_c", 0.0)) or 0.0)
+
+    if metric == "ph" and value < target:
+        amount_ml = max(1, round((target - value) / 0.02 + 1))
+        return "dose_base", {"amount_ml": amount_ml}, f"pH {value:.2f} below stable target {target:.2f}; add {amount_ml} ml base"
+    if metric == "ph" and value > target:
+        amount_ml = max(1, round((value - target) / 0.02 + 1))
+        return "dose_acid", {"amount_ml": amount_ml}, f"pH {value:.2f} above stable target {target:.2f}; add {amount_ml} ml acid"
+    if metric == "ec_ppm" and value < target:
+        amount_ml = max(10, round(target - value))
+        return "dose_nutrients", {"amount_ml": amount_ml}, f"EC {value:.0f} ppm below stable target {target:.0f}; add {amount_ml} ml nutrients"
+    if metric == "ec_ppm" and value > target:
+        flush_percent = max(10, min(80, round(100 * (1 - target / value) + 2)))
+        return "flush_reservoir", {"flush_percent": flush_percent}, f"EC {value:.0f} ppm above stable target {target:.0f}; flush {flush_percent}%"
+    if metric == "temp_c" and value > target:
+        return "enter_heat_stress_mode", {}, f"temperature {value:.1f}C above stable target {target:.1f}C"
+
+    return None
+
+
 def _fallback_fault_actions(reading: sensor_poller.SensorReading, cycle_id: str) -> list[dict]:
-    """Repair obvious simulated faults if the model failed to call tools."""
+    """Repair obvious simulated faults with amounts derived from current pod values."""
     actions_taken: list[dict] = []
     for pod in reading.pods:
         fault = pod.get("fault_type", "none")
@@ -198,11 +238,11 @@ def _fallback_fault_actions(reading: sensor_poller.SensorReading, cycle_id: str)
         if fault == "none" and status not in {"warning", "critical"}:
             continue
 
-        repair = _FAULT_REPAIR_TOOLS.get(fault)
+        repair = _dynamic_repair_for_fault(pod)
         if repair is None:
             continue
 
-        tool_name, default_params = repair
+        tool_name, default_params, reason = repair
         params = {"pod_id": pod.get("id") or reading.pod_id, **default_params}
         result = execute_tool(tool_name, params)
         action = alog.sanitize_action({
@@ -210,7 +250,7 @@ def _fallback_fault_actions(reading: sensor_poller.SensorReading, cycle_id: str)
             "tool": tool_name,
             "params": params,
             "result": result,
-            "reason": f"Safety fallback repaired active simulated fault {fault}",
+            "reason": f"Safety fallback repaired {fault}: {reason}",
             "status": status if status in ("healthy", "warning", "critical") else reading.status,
             "cycle_id": cycle_id,
         })
