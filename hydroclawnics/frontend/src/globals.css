@@ -109,3 +109,60 @@ a:focus-visible {
     opacity: 1;
   }
 }
+
+/* Tabular numbers — prevents layout jitter on live metric updates */
+.font-mono,
+[class*="font-mono"] {
+  font-feature-settings: 'tnum';
+}
+
+/* Tab content fade + lift */
+@keyframes tab-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.tab-enter {
+  animation: tab-enter 150ms ease forwards;
+}
+
+/* Modal scale-in */
+@keyframes modal-enter {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.modal-enter {
+  animation: modal-enter 200ms ease forwards;
+}
+
+/* Status badge pulse (triggered by React key change) */
+@keyframes badge-pop {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+.badge-pop {
+  animation: badge-pop 300ms ease;
+}
+
+/* Agent log entry slide-in */
+@keyframes log-slide-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.log-entry {
+  animation: log-slide-in 150ms ease forwards;
+}
+
+/* Free-camera HUD chip */
+@keyframes hud-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.hud-chip {
+  animation: hud-fade-in 200ms ease forwards;
+}
+
+/* Collapsible drawer transition */
+.drawer-open {
+  transition: width 250ms ease, opacity 250ms ease;
+}
