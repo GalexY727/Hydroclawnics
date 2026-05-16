@@ -1,22 +1,54 @@
-import { useRef } from 'react'
+import { useRef, useMemo } from 'react'
 import { Text } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
+import * as THREE from 'three'
+import { createPlantMesh } from './plantMesh'
 
-function stageGeometry(ageHours) {
-  if (ageHours < 12)  return { stemH: 0.4,  stemR: 0.5, foliageR: 0.20, foliageY: 0.70 }
-  if (ageHours < 36)  return { stemH: 0.6,  stemR: 0.5, foliageR: 0.30, foliageY: 1.00 }
-  if (ageHours < 60)  return { stemH: 0.65, stemR: 0.5, foliageR: 0.45, foliageY: 1.10 }
-  return               { stemH: 0.65, stemR: 0.5, foliageR: 0.60, foliageY: 1.20 }
-}
-
-export default function PodMesh({ pod, onPodSelect }) {
-  const foliageRef = useRef()
-  const { stemH, stemR, foliageR, foliageY } = stageGeometry(pod.age_hours)
+export default function PodMesh({ pod, onPodSelect, podIndex = 0 }) {
+  const plantRef = useRef()
   const isAlerted = pod.status === 'warning' || pod.status === 'critical'
+  const stage = pod.stage ?? 1
+  const health = pod.health ?? 0.8
+
+  const { plantGroup, alertMaterials } = useMemo(() => {
+    const group = createPlantMesh(stage, health)
+    const alertMats = []
+
+    if (isAlerted) {
+      const emissiveColor = new THREE.Color(
+        pod.status === 'critical' ? '#c9566b' : '#d4a373'
+      )
+      group.traverse((child) => {
+        if (child instanceof THREE.Mesh && child.userData.isFoliage) {
+          const cloned = child.material.clone()
+          cloned.emissive = emissiveColor
+          cloned.emissiveIntensity = 0.02
+          child.material = cloned
+          alertMats.push(cloned)
+        }
+      })
+    }
+
+    return { plantGroup: group, alertMaterials: alertMats }
+  }, [stage, health, isAlerted, pod.status])
 
   useFrame(({ clock }) => {
-    if (!foliageRef.current || !isAlerted) return
-    foliageRef.current.emissiveIntensity = 0.05 + 0.10 * (0.5 + 0.5 * Math.sin(clock.elapsedTime * Math.PI))
+    const t = clock.elapsedTime
+    const phase = podIndex * 1.3
+
+    if (plantRef.current) {
+      plantRef.current.rotation.x =
+        (Math.sin(t * 0.3 + phase) * 0.7 + Math.sin(t * 0.13 + phase * 1.4) * 0.3) * 0.018
+      plantRef.current.rotation.z =
+        (Math.cos(t * 0.25 + phase) * 0.7 + Math.cos(t * 0.09 + phase * 1.6) * 0.3) * 0.012
+    }
+
+    if (isAlerted && alertMaterials.length > 0) {
+      const intensity = 0.02 + 0.03 * (0.5 + 0.5 * Math.sin(t * 0.7))
+      for (const mat of alertMaterials) {
+        mat.emissiveIntensity = intensity
+      }
+    }
   })
 
   return (
@@ -24,40 +56,30 @@ export default function PodMesh({ pod, onPodSelect }) {
       position={pod.position}
       onClick={(e) => { e.stopPropagation(); onPodSelect?.(pod.pod_id, pod.position) }}
     >
-      <mesh position={[0, stemH / 2, 0]}>
-        <cylinderGeometry args={[stemR, stemR, stemH, 32]} />
-        <meshStandardMaterial color="#6a6a6a" roughness={0.85} metalness={0.05} />
-      </mesh>
-
-      <mesh position={[0, foliageY, 0]} scale={pod.heightScale}>
-        <sphereGeometry args={[foliageR, 32, 32]} />
-        <meshStandardMaterial
-          ref={foliageRef}
-          color={pod.color}
-          roughness={0.6}
-          metalness={0}
-          emissive={pod.color}
-          emissiveIntensity={isAlerted ? 0.08 : 0}
-        />
-      </mesh>
-
-      {pod.age_hours >= 60 && (
-        <mesh position={[0.3, foliageY + 0.3, 0.1]} scale={pod.heightScale * 0.55}>
-          <sphereGeometry args={[foliageR, 24, 24]} />
-          <meshStandardMaterial color={pod.color} roughness={0.65} metalness={0} emissive={pod.color} emissiveIntensity={0.04} />
+      {/* Tray — never rotates */}
+      <group>
+        <mesh position={[0, 0.04, 0]}>
+          <boxGeometry args={[1.2, 0.08, 1.2]} />
+          <meshLambertMaterial color="#8B7355" />
         </mesh>
-      )}
+        <mesh position={[0, 0.07, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[1.0, 1.0]} />
+          <meshLambertMaterial color="#5b8fa8" opacity={0.5} transparent />
+        </mesh>
+        <Text
+          position={[0, 0.085, 0.55]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          fontSize={0.18}
+          color="#f5f1de"
+          anchorX="center"
+          anchorY="middle"
+        >
+          {pod.pod_id}
+        </Text>
+      </group>
 
-      <Text
-        position={[0, -0.08, stemR + 0.05]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        fontSize={0.28}
-        color="#f5f1de"
-        anchorX="center"
-        anchorY="middle"
-      >
-        {pod.pod_id}
-      </Text>
+      {/* Plant — sways with wind */}
+      <primitive ref={plantRef} object={plantGroup} />
     </group>
   )
 }
