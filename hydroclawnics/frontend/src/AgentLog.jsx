@@ -17,7 +17,9 @@ function formatTime(timestamp) {
   return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
 
-export default function AgentLog({ entries }) {
+const STATUS_DOT_COLOR = { healthy: 'var(--color-success)', warning: 'var(--color-warning)', critical: 'var(--color-critical)' }
+
+export default function AgentLog({ entries, pods = {} }) {
   const [expanded, setExpanded] = useState({})
 
   return (
@@ -40,8 +42,14 @@ export default function AgentLog({ entries }) {
             const visibleReasoning = isExpanded || !shouldTruncate ? reasoning : `${reasoning.slice(0, REASONING_PREVIEW_CHARS)}`
 
             return (
-              <article key={key} className="border-b py-3 first:pt-0 last:border-b-0" style={{ borderColor: 'var(--color-border)' }}>
+              <article key={key} className="log-entry border-b py-3 first:pt-0 last:border-b-0" style={{ borderColor: 'var(--color-border)' }}>
                 <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                  {(() => {
+                    const podStatus = entry.pod_id ? pods[entry.pod_id]?.status : null
+                    return podStatus ? (
+                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: STATUS_DOT_COLOR[podStatus] || STATUS_DOT_COLOR.healthy }} />
+                    ) : null
+                  })()}
                   <span className="text-xs" style={{ color: 'var(--color-muted)' }}>
                     {formatTime(entry.timestamp)}
                   </span>
