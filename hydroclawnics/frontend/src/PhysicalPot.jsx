@@ -1,86 +1,96 @@
-import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
-
-const statusClasses = {
-  healthy: 'border-emerald-500',
-  warning: 'border-amber-400',
-  critical: 'border-rose-500',
+const statusStyles = {
+  healthy: { background: 'var(--color-success)', color: 'var(--color-bg)' },
+  warning: { background: 'var(--color-warning)', color: 'var(--color-bg)' },
+  critical: { background: 'var(--color-critical)', color: 'var(--color-text)' },
 }
 
-function Gauge({ label, value, min, max, suffix, color, greenZone }) {
-  const percentage = ((value - min) / (max - min)) * 100
-  const clampedPercentage = Math.max(0, Math.min(100, percentage))
-  
-  // Determine color based on green zone
-  let displayColor = color
-  if (value < greenZone[0] || value > greenZone[1]) {
-    displayColor = '#ef4444' // red for out of range
-  }
+const metricRanges = {
+  ph: { min: 6.0, max: 7.0, scaleMin: 4.5, scaleMax: 8.0 },
+  ec: { min: 0.8, max: 1.2, scaleMin: 0.2, scaleMax: 2.0 },
+  temp: { min: 18, max: 24, scaleMin: 10, scaleMax: 32 },
+}
 
-  const data = [
-    { name: 'value', value: clampedPercentage },
-    { name: 'empty', value: 100 - clampedPercentage },
-  ]
+function formatNumber(value, digits = 1) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return '--'
+  return numeric.toFixed(digits)
+}
+
+function statusForMetric(value, min, max) {
+  if (value >= min && value <= max) return 'ok'
+  return 'warn'
+}
+
+function MetricRow({ label, value, displayValue, rangeText, range, accent = 'var(--color-success)' }) {
+  const numeric = Number(value)
+  const safeValue = Number.isFinite(numeric) ? numeric : range.min
+  const percentage = ((safeValue - range.scaleMin) / (range.scaleMax - range.scaleMin)) * 100
+  const clamped = Math.max(0, Math.min(100, percentage))
+  const metricStatus = statusForMetric(safeValue, range.min, range.max)
 
   return (
-    <div className="rounded bg-slate-950 p-4 flex flex-col items-center">
-      <ResponsiveContainer width="100%" height={180}>
-        <PieChart>
-          <Pie
-            data={data}
-            cx="50%"
-            cy="50%"
-            startAngle={180}
-            endAngle={0}
-            innerRadius={60}
-            outerRadius={80}
-            paddingAngle={0}
-            dataKey="value"
-          >
-            <Cell fill={displayColor} />
-            <Cell fill="#1f2937" />
-          </Pie>
-        </PieChart>
-      </ResponsiveContainer>
-      <div className="text-center mt-2">
-        <p className="text-2xl font-semibold text-slate-100">
-          {value.toFixed(1)}{suffix}
-        </p>
-        <p className="text-xs text-slate-400">{label}</p>
-        <p className="text-xs text-slate-500 mt-1">
-          {min}-{max} ({greenZone[0]}-{greenZone[1]} ideal)
-        </p>
+    <div className="space-y-2">
+      <div className="flex items-baseline justify-between gap-2">
+        <div className="flex items-baseline gap-1 flex-1 min-w-0">
+          <span className="text-xs font-medium flex-shrink-0" style={{ color: 'var(--color-muted)' }}>
+            {label}
+          </span>
+          <span className="font-mono text-base font-bold" style={{ color: 'var(--color-text)' }}>
+            {displayValue}
+          </span>
+        </div>
+        <span className="text-[10px] flex-shrink-0" style={{ color: metricStatus === 'ok' ? 'var(--color-success)' : 'var(--color-warning)' }}>
+          {metricStatus === 'ok' ? '✓' : '×'}
+        </span>
+      </div>
+      <div className="text-[11px] leading-tight" style={{ color: 'var(--color-muted)' }}>
+        {rangeText}
+      </div>
+      <div className="h-[3px] overflow-hidden rounded-full" style={{ background: 'var(--color-surface-2)' }}>
+        <div className="h-full rounded-full transition-all duration-300" style={{ width: `${clamped}%`, background: metricStatus === 'ok' ? accent : 'var(--color-warning)' }} />
       </div>
     </div>
   )
 }
 
 export default function PhysicalPot({ pods }) {
-  // # FIX: The physical pot is pinned to pod_00 when present, otherwise it follows the first live pod from FastAPI.
   const pod = pods.pod_00 || Object.values(pods)[0]
+  const status = pod?.status || 'healthy'
+  const ecMs = Number(pod?.ec_ppm || 0) / 1000
 
   return (
-    <section className={`border-2 ${statusClasses[pod?.status] || statusClasses.healthy} bg-slate-900 p-4`}>
-      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+    <div className="h-full rounded-lg border p-3" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
+      <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold">Pot Alpha (Physical)</h2>
-          <p className="text-sm text-slate-400">{pod ? `${pod.id} · ${pod.crop}` : 'Waiting for live pod data'}</p>
+          <h2 className="text-sm font-medium" style={{ color: 'var(--color-muted)' }}>
+            Pot Alpha (Physical)
+          </h2>
+          <p className="mt-1 text-xs capitalize" style={{ color: 'var(--color-muted)' }}>
+            {pod ? `${pod.id} · ${pod.crop}` : 'Waiting for live pod data'}
+          </p>
         </div>
-        {pod && <span className="rounded bg-slate-800 px-2 py-1 text-xs uppercase text-slate-300">{pod.status}</span>}
+        {pod && (
+          <span className="rounded-full px-2.5 py-1 text-xs font-bold uppercase tracking-[0.02em]" style={statusStyles[status] || statusStyles.healthy}>
+            {status}
+          </span>
+        )}
       </div>
 
       {pod ? (
         <div className="grid gap-3 lg:grid-cols-3">
-          <Gauge label="pH" value={pod.ph ?? 0} min={0} max={14} suffix="" color="#38bdf8" greenZone={[6, 7]} />
-          <Gauge label="EC ppm" value={(pod.ec_ppm ?? 0) / 1000} min={0} max={3} suffix="" color="#22c55e" greenZone={[0.8, 1.6]} />
-          <Gauge label="Temp °C" value={pod.temp_c ?? 0} min={10} max={35} suffix="°C" color="#f97316" greenZone={[18, 24]} />
+          <MetricRow label="pH" value={pod.ph} displayValue={formatNumber(pod.ph, 2)} rangeText="[range 6.0-7.0]" range={metricRanges.ph} />
+          <MetricRow label="EC" value={ecMs} displayValue={`${formatNumber(ecMs, 1)} ppm`} rangeText="[range 0.8-1.2]" range={metricRanges.ec} accent="var(--color-info)" />
+          <MetricRow label="Temp" value={pod.water_temp_c} displayValue={`${formatNumber(pod.water_temp_c, 0)}°C`} rangeText="[range 18-24]" range={metricRanges.temp} accent="var(--color-warning)" />
         </div>
       ) : (
-        <div className="flex items-center justify-center rounded bg-slate-800 py-12 text-slate-400">No sensor data available</div>
+        <div className="flex min-h-32 items-center justify-center rounded-md border text-sm italic" style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted)' }}>
+          No sensor data available
+        </div>
       )}
 
-      <p className="mt-3 text-sm italic text-slate-400">
-        Last action: {pod?.last_action || 'No physical intervention logged yet.'}
+      <p className="mt-3 truncate text-xs italic" style={{ color: 'var(--color-muted)' }}>
+        {pod?.last_action || 'No physical intervention logged yet'}
       </p>
-    </section>
+    </div>
   )
 }

@@ -6,18 +6,37 @@ const MAX_AGENT_LOG = 50
 
 function withHistory(podsById, incomingPods) {
   const timestamp = new Date().toISOString()
-  return incomingPods.reduce((next, pod) => {
+  return incomingPods.reduce((next, raw) => {
+    const pod = {
+      id: raw.id,
+      crop: raw.crop,
+      age_hours: raw.age_hours,
+      plant_height_cm: raw.plant_height_cm ?? 10,
+      status: raw.plant_status ?? raw.status ?? 'healthy',
+      fault_type: raw.fault_type ?? 'none',
+      ph: raw.ph,
+      ec_ppm: raw.ec_ppm,
+      water_temp_c: raw.water_temp_c ?? raw.temp_c,
+      air_temp_c: raw.air_temp_c ?? raw.temp_c,
+      humidity: raw.relative_humidity_percent ?? raw.humidity,
+      water_level: raw.water_level_percent ?? raw.water_level,
+      light_lux: raw.light_lux,
+      pump_status: raw.pump_status ?? true,
+      flow_rate: raw.flow_rate_l_min ?? raw.flow_rate,
+      last_action: raw.last_action,
+      timestamp: raw.timestamp ?? timestamp,
+    }
     const previous = next[pod.id] || {}
     const history = [
       ...(previous.history || []),
       {
         ph: Number(pod.ph || 0),
         ec_ppm: Number(pod.ec_ppm || 0),
-        temp_c: Number(pod.temp_c || 0),
+        water_temp_c: Number(pod.water_temp_c || 0),
+        water_level: Number(pod.water_level || 0),
         timestamp,
       },
     ].slice(-MAX_HISTORY)
-
     next[pod.id] = { ...previous, ...pod, history }
     return next
   }, { ...podsById })

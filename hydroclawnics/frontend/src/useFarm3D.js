@@ -1,16 +1,38 @@
-const STATUS_COLOR = {
-  healthy: '#4ade80',
-  warning: '#facc15',
-  critical: '#f87171',
+const HEALTH_MAP = { healthy: 0.9, warning: 0.55, critical: 0.2 }
+
+export function deriveStage(ageHours) {
+  const h = Number(ageHours)
+  if (!Number.isFinite(h)) return 1
+  if (h < 12) return 0
+  if (h < 36) return 1
+  if (h < 60) return 2
+  return 3
+}
+
+export function deriveHealth(status) {
+  return HEALTH_MAP[status] ?? 0.8
+}
+
+function gridColumns(count) {
+  if (count <= 20) return 5
+  if (count <= 64) return 8
+  return 10
 }
 
 export default function useFarm3D(pods) {
-  return Object.values(pods).map((pod, idx) => ({
-    pod_id: pod.id,
-    status: pod.status,
-    // # FIX: Growth scale now follows the 0-72 hour requirement instead of flattening over 240 hours.
-    ageScale: Math.min(1, Math.max(0.3, 0.3 + (Number(pod.age_hours || 0) / 72) * 0.7)),
-    color: STATUS_COLOR[pod.status] || STATUS_COLOR.healthy,
-    position: [((idx % 4) - 1.5) * 3, 0, (Math.floor(idx / 4) - 2) * 3],
-  }))
+  const list = Object.values(pods)
+  const cols = gridColumns(list.length)
+  return list.map((pod, idx) => {
+    const col = idx % cols
+    const row = Math.floor(idx / cols)
+    return {
+      pod_id: pod.id,
+      status: pod.status,
+      age_hours: Number(pod.age_hours) || 0,
+      stage: deriveStage(pod.age_hours),
+      health: deriveHealth(pod.status),
+      podIndex: idx,
+      position: [(col - (cols - 1) / 2) * 3, 0, (row - 1) * 3],
+    }
+  })
 }
