@@ -8,13 +8,13 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to brev instance
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.BREV_HOST }}
-          username: ${{ secrets.BREV_USER }}
-          key: ${{ secrets.BREV_SSH_PRIVATE_KEY }}
-          envs: NVIDIA_API_KEY
-          script: |
-            export NVIDIA_API_KEY="${{ secrets.NVIDIA_API_KEY }}"
-            bash /home/ubuntu/your-repo/deploy.sh
+      - name: Deploy
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.BREV_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.BREV_HOST }} >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key ${{ secrets.BREV_USER }}@${{ secrets.BREV_HOST }} \
+            "cd /home/ubuntu/Hydroclawnics-Simulation && git pull origin main && NVIDIA_API_KEY=$NVIDIA_API_KEY bash deploy.sh"
