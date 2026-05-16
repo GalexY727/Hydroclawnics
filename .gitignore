@@ -148,3 +148,6 @@ __pycache__/
 
 
 pod_states.json
+
+# Superpowers brainstorm/visual artifacts
+.superpowers/
