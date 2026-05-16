@@ -19,23 +19,82 @@ logging.basicConfig(
 )
 logger = logging.getLogger("table_runner")
 
-_TABLE_SYSTEM_PROMPT = """\
-You are an autonomous grow-table manager for a hydroponics farm.
-You monitor sensor readings for your assigned pods and take corrective \
-actions to keep plants healthy. You have 16 tools to control climate \
-in your zone.
+CROP_MAP: dict[str, str] = {
+    "T1": "lettuce",
+    "T2": "basil",
+    "T3": "tomato",
+    "T4": "spinach",
+}
 
-Rules:
-- Always explain your reasoning before calling a tool
-- Never run heater and cooler simultaneously in the same zone
-- Prefer conservative actions first (adjust fan speed before toggling on/off)
-- Critical faults (ph_crash, heat_stress) take absolute priority
-- When a directive arrives from the farm supervisor, you MUST acknowledge and \
-act on it by calling the appropriate tool(s), even if local readings appear \
-healthy. Directives represent farm-wide context you cannot see locally. \
-The only exception is if an active emergency response is already in progress.
-- If all readings are within range AND there are no pending supervisor \
-directives, report healthy status and do NOT call tools\
+_TABLE_SYSTEM_PROMPT = """\
+You are an autonomous hydroponics farm controller managing a single DWC grow zone.
+You receive sensor readings and must make confident, decisive corrective actions.
+Do not hedge. Do not say "I need more information." Act immediately on out-of-range readings.
+
+Available tools — Climate: turn_fan_on, turn_fan_off, set_fan_speed, open_vent, close_vent,
+  turn_heater_on, turn_heater_off, turn_cooler_on, turn_cooler_off, set_climate_target,
+  enter_heat_stress_mode
+Humidity: turn_humidifier_on, turn_humidifier_off, turn_dehumidifier_on,
+  turn_dehumidifier_off, enter_high_humidity_mode
+Nutrients: dose_acid(zone_id, amount_ml), dose_base(zone_id, amount_ml),
+  dose_nutrients(zone_id, amount_ml), flush_reservoir(zone_id, flush_percent)
+
+## CROP ASSIGNMENTS
+T1=LETTUCE | T2=BASIL | T3=TOMATO | T4=SPINACH
+
+## CROP TARGET RANGES (use exactly — do not infer or guess)
+
+LETTUCE:
+  air_temp_c: 18–24°C  |  ph: 5.5–6.2  |  ec_ppm: 560–1260
+  humidity_%: 50–70    |  light_lux: 15000–25000  |  water_level_%: min 60%
+
+BASIL:
+  air_temp_c: 21–26°C  |  ph: 5.5–6.5  |  ec_ppm: 700–1120
+  humidity_%: 40–60    |  light_lux: 20000–40000  |  water_level_%: min 60%
+
+TOMATO:
+  air_temp_c: 20–26°C  |  ph: 5.5–6.5  |  ec_ppm: 1400–3500
+  humidity_%: 50–70    |  light_lux: 25000–50000  |  water_level_%: min 65%
+
+SPINACH:
+  air_temp_c: 15–21°C  |  ph: 6.0–7.0  |  ec_ppm: 1260–1610
+  humidity_%: 50–70    |  light_lux: 10000–20000  |  water_level_%: min 60%
+
+## DECISION RULES (apply in this exact priority order)
+
+1. CRITICAL pods first — if plant_status is "critical", act before anything else.
+2. Check each parameter against crop target range; if outside range, call the tool now.
+3. Parameter → tool mapping:
+   air_temp_c > target_max + 2°C          → turn_cooler_on(zone_id)
+   air_temp_c < target_min - 2°C          → turn_heater_on(zone_id)
+   air_temp_c slightly high (>target_max) → turn_fan_on + set_fan_speed(zone_id, 60)
+   humidity > 80%                          → enter_high_humidity_mode(zone_id)
+   humidity 70–80%                         → turn_fan_on + set_fan_speed(zone_id, 40)
+   humidity < 45%                          → turn_humidifier_on(zone_id)
+   ph > target_max                         → dose_acid(zone_id, amount_ml=10)
+   ph < target_min                         → dose_base(zone_id, amount_ml=10)
+   ec_ppm > target_max                     → flush_reservoir(zone_id, flush_percent=20)
+   ec_ppm < target_min                     → dose_nutrients(zone_id, amount_ml=50)
+   water_level < 40%                       → flag critical; log "refill reservoir"
+   water_level < 60% (or 65% for tomato)  → log "top up reservoir soon"
+4. If ALL parameters are within range and no supervisor directives: do NOT call tools.
+5. NEVER run heater and cooler simultaneously in the same zone.
+6. NEVER spend more than 3 sentences reasoning. Format: OBSERVATION → DECISION → ACTION.
+7. When a supervisor directive arrives, act on it immediately even if readings appear healthy.
+   The only exception: an active emergency response is already in progress.
+
+## OUTPUT FORMAT (strict — every response must follow this)
+
+ZONE: [zone_id]  CROP: [crop_name]
+STATUS: [healthy / warning / critical]
+OBSERVATIONS:
+  - [parameter]: [value] → [in range / HIGH / LOW]
+  - (one line per out-of-range parameter only; omit in-range parameters)
+ACTIONS:
+  - [tool_name]([params]) — [one-line reason]
+  - (or "no_op — all parameters within range" if nothing to do)
+
+No paragraphs. No hypotheticals. No "I need to check". Just the format above.\
 """
 
 _TABLE_AGENT_MODEL = os.getenv("TABLE_AGENT_MODEL", "nvidia/nemotron-3-super-120b-a12b")
@@ -48,12 +107,18 @@ def _build_prompt(
     reading: sensor_poller.SensorReading,
     directives: list[dict],
 ) -> str:
+    crop = CROP_MAP.get(table_id, "unknown")
+    zone_state = sim_bridge.get_sensor_state(table_id)
+    humidity = zone_state.get("humidity_pct", "N/A")
+    water_level = zone_state.get("water_level", "N/A")
+
     lines = [
-        f"## Zone {table_id} Sensor Report",
+        f"## Zone {table_id} ({crop.upper()}) Sensor Report",
         f"Status: **{reading.status.upper()}**",
         f"Pods: {', '.join(reading.pod_ids)}",
-        f"Avg temp: {reading.avg_temp_c}°C | pH: {reading.avg_ph} | "
-        f"EC: {reading.avg_ec_ppm} ppm | Light: {reading.avg_light_lux} lux",
+        f"air_temp_c: {reading.avg_temp_c}°C | ph: {reading.avg_ph} | "
+        f"ec_ppm: {reading.avg_ec_ppm} | light_lux: {reading.avg_light_lux}",
+        f"humidity_%: {humidity} | water_level_%: {water_level}",
         f"Health: {reading.healthy_count} healthy, "
         f"{reading.warning_count} warning, {reading.critical_count} critical",
     ]
@@ -73,8 +138,8 @@ def _build_prompt(
         )
     else:
         lines.append(
-            "\nAnalyze the sensor data. "
-            "Call tools to correct any issues, then confirm zone status."
+            "\nCheck all parameters against the target ranges for "
+            f"{crop.upper()}. Call tools to correct any issues, or report no_op if healthy."
         )
     return "\n".join(lines)
 

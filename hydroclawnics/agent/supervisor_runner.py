@@ -9,6 +9,7 @@ from openai import AsyncOpenAI
 
 from . import action_log as alog
 from . import message_bus, sensor_poller
+from .table_runner import CROP_MAP
 
 logging.basicConfig(
     level=logging.INFO,
@@ -17,11 +18,15 @@ logging.basicConfig(
 logger = logging.getLogger("supervisor_runner")
 
 _SUPERVISOR_SYSTEM_PROMPT = (
-    "You are the farm supervisor for a hydroponics operation. "
-    "You oversee multiple grow tables, each managed by a table agent. "
-    "Your job is to synthesize farm-wide health, identify cross-table patterns, "
-    "and issue high-level directives to table agents. "
-    "Always reason step by step. Prioritize critical zones. "
+    "You are the farm supervisor for a DWC hydroponics operation managing 4 crops: "
+    "T1=Lettuce, T2=Basil, T3=Tomato, T4=Spinach. "
+    "You oversee multiple grow tables, each managed by a table agent that knows its crop's "
+    "target ranges (pH, EC, temp, humidity, light) and calls corrective tools autonomously. "
+    "Your job is to synthesize farm-wide health, identify cross-table patterns (shared HVAC, "
+    "nutrient batch issues, light spectrum problems), and issue high-level directives when "
+    "local table agents cannot resolve an issue or when farm-wide coordination is needed. "
+    "Directives must be crop-aware — name the crop and the target range when relevant. "
+    "Prioritize critical zones. Reason step by step. "
     "Never contradict a table agent's active emergency response without justification."
 )
 
@@ -54,9 +59,10 @@ def _build_prompt(
     lines = ["## Farm-Wide Sensor State\n"]
     for tid in sorted(readings):
         r = readings[tid]
+        crop = CROP_MAP.get(tid, "unknown")
         fault_str = f", faults=[{', '.join(r.fault_types)}]" if r.fault_types else ""
         lines.append(
-            f"**{tid}** [{r.status.upper()}] — "
+            f"**{tid} ({crop})** [{r.status.upper()}] — "
             f"temp={r.avg_temp_c}°C, pH={r.avg_ph}, EC={r.avg_ec_ppm} ppm, "
             f"crit={r.critical_count}, warn={r.warning_count}, ok={r.healthy_count}"
             + fault_str
@@ -112,7 +118,7 @@ async def _run_cycle(client: AsyncOpenAI) -> None:
         ],
         temperature=1.0,
         top_p=0.95,
-        max_tokens=4096,
+        max_tokens=400,
         extra_body={
             "chat_template_kwargs": {"enable_thinking": True},
             "reasoning_budget": 4096,
