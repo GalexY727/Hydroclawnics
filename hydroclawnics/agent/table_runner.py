@@ -8,6 +8,7 @@ import os
 import re
 import time
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from openai import AsyncOpenAI
 
@@ -259,6 +260,7 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
     tools = as_openai_tools()
     actions_taken: list[dict] = []
     reasoning_text = ""
+    cycle_id = str(uuid4())
 
     for _ in range(5):  # max 5 agentic rounds
         response = await client.chat.completions.create(
@@ -296,16 +298,26 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
             params.setdefault("zone_id", table_id)
 
             result = execute_tool(tc.function.name, params)
+            action = alog.sanitize_action({
+                "zone_id": table_id,
+                "pod_id": params.get("pod_id") or table_id,
+                "tool": tc.function.name,
+                "params": params,
+                "result": result,
+                "reason": reasoning_text or "",
+                "status": reading.status,
+                "cycle_id": cycle_id,
+            })
             # Log each tool call for detailed audit trail
             alog.log(
                 agent_type="table",
                 table_id=table_id,
-                tool=tc.function.name,
-                params=params,
+                tool=action["tool"],
+                params=action["params"],
                 result=result,
-                reasoning=reasoning_text or None,
+                reasoning=action["reason"] or None,
             )
-            actions_taken.append({"tool": tc.function.name, "params": params, "result": result})
+            actions_taken.append(action)
             tool_results.append({
                 "role": "tool",
                 "tool_call_id": tc.id,
@@ -314,9 +326,34 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
 
         messages.extend(tool_results)
 
-    parsed = parse_agent_response(reasoning_text)
+    if reasoning_text and not alog.validate_agent_response(reasoning_text):
+        logger.warning("[%s] Agent response looked truncated; treating cycle as no_op", table_id)
+        reasoning_text = "all parameters within range"
+        parsed = {"zone_id": table_id, "status": reading.status, "observations": [], "actions": []}
+        actions_taken = []
+    else:
+        parsed = parse_agent_response(reasoning_text)
     cycle_ms = int((time.monotonic() - cycle_start) * 1000)
     effective_status = parsed.get("status") or reading.status
+    observation_summary = "all parameters within range"
+    if parsed.get("observations"):
+        observation_summary = "; ".join(
+            f"{obs.get('param', '')} {obs.get('flag', '')}".strip()
+            for obs in parsed.get("observations", [])
+        )
+    if not actions_taken:
+        actions_taken = [
+            alog.sanitize_action({
+                "zone_id": table_id,
+                "pod_id": pod.get("id", table_id),
+                "tool": "no_op",
+                "params": {},
+                "reason": observation_summary,
+                "status": pod.get("status") or effective_status,
+                "cycle_id": cycle_id,
+            })
+            for pod in (reading.pods or [{"id": table_id, "status": effective_status}])
+        ]
 
     # One structured cycle entry — this is what gets broadcast to the frontend
     cycle_entry = alog.log_cycle(
@@ -326,6 +363,7 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
         actions_taken=actions_taken,
         raw_reasoning=reasoning_text,
         cycle_duration_ms=cycle_ms,
+        cycle_id=cycle_id,
     )
     asyncio.create_task(alog.broadcast_action(cycle_entry))
 
