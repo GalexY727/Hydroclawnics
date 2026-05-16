@@ -1,0 +1,142 @@
+<style>
+  :root {
+    --bg: #0f1419; --surface: #1a1f2e; --surface2: #252d3d;
+    --text: #f5f1de; --muted: #a8a49e; --border: #3d4451;
+    --success: #7fb069; --warning: #d4a373; --critical: #c9566b; --info: #6fa3d8;
+  }
+  h2 { color: var(--text); margin-bottom: 4px; }
+  .subtitle { color: var(--muted); margin-bottom: 24px; }
+
+  .toolbar {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 14px; margin-bottom: 12px;
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+  }
+  .toolbar-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); white-space: nowrap; }
+  .pill { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 99px; border: 1px solid var(--border); background: var(--surface2); color: var(--muted); cursor: pointer; white-space: nowrap; }
+  .pill.active { background: var(--info); color: var(--bg); border-color: var(--info); }
+  .pill.active-warn { background: var(--warning); color: var(--bg); border-color: var(--warning); }
+  .divider { width: 1px; height: 20px; background: var(--border); }
+  .sort-select { font-size: 11px; font-weight: 600; padding: 4px 22px 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); appearance: none; background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23a8a49e' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; }
+  .result-count { font-size: 11px; color: var(--muted); margin-left: auto; white-space: nowrap; }
+  .per-page-select { font-size: 11px; font-weight: 600; padding: 4px 22px 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); appearance: none; background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23a8a49e' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 6px center; }
+
+  .pod-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+
+  .pc-pod { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--success); border-radius: 6px; font-family: Inter, sans-serif; }
+  .pc-pod.warn { border-left-color: var(--warning); }
+  .pc-pod.crit { border-left-color: var(--critical); background: #1c1620; }
+  .pc-inner { padding: 10px 10px 10px 11px; }
+  .pc-crop { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 2px; }
+  .pc-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
+  .pc-id { font-size: 12px; font-weight: 700; color: var(--text); }
+  .pc-fault { font-size: 9px; color: var(--warning); font-weight: 700; }
+  .pc-fault.crit { color: var(--critical); }
+  .pc-table { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 2px 6px; align-items: baseline; }
+  .pc-lbl { font-size: 9px; color: var(--muted); }
+  .pc-val { font-size: 10px; color: var(--text); font-family: monospace; font-weight: 600; text-align: right; }
+  .pc-water { margin-top: 7px; }
+  .pc-water-label { display: flex; justify-content: space-between; font-size: 9px; color: var(--muted); margin-bottom: 3px; }
+  .pc-water-label span { color: var(--text); font-weight: 600; }
+  .pc-track { height: 3px; background: var(--surface2); border-radius: 2px; overflow: hidden; }
+  .pc-fill { height: 100%; border-radius: 2px; background: var(--info); }
+  .pc-fill.low { background: var(--critical); }
+  .pc-fill.med { background: var(--warning); }
+
+  /* ── PAGINATION ── */
+  .pagination-bar {
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .pagination-info {
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .pagination-info strong { color: var(--text); }
+  .page-controls { display: flex; align-items: center; gap: 4px; }
+  .page-btn {
+    width: 30px; height: 30px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 6px; border: 1px solid var(--border);
+    background: var(--surface2); color: var(--muted);
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    transition: background 0.15s;
+  }
+  .page-btn:hover { background: var(--surface); color: var(--text); }
+  .page-btn.active { background: var(--info); color: var(--bg); border-color: var(--info); }
+  .page-btn.disabled { opacity: 0.3; cursor: default; }
+  .page-btn.nav { width: 30px; color: var(--muted); font-size: 14px; }
+  .page-ellipsis { font-size: 12px; color: var(--muted); padding: 0 2px; }
+  .per-page-row { display: flex; align-items: center; gap: 6px; }
+  .per-page-label { font-size: 11px; color: var(--muted); }
+</style>
+
+<h2>Grid: Pagination + Controls</h2>
+<p class="subtitle">Pagination bar sits below the grid. Configurable page size (12 / 24 / 48). Filters + sort reset to page 1 automatically.</p>
+
+<!-- Toolbar -->
+<div class="toolbar">
+  <span class="toolbar-label">Filter</span>
+  <span class="pill active">All</span>
+  <span class="pill" style="color:var(--critical); border-color:rgba(201,86,107,0.4)">Critical (2)</span>
+  <span class="pill active-warn" style="background:transparent; color:var(--warning); border-color:rgba(212,163,115,0.4)">Warning (4)</span>
+  <span class="pill">Healthy (14)</span>
+  <div class="divider"></div>
+  <span class="pill">🥬 Lettuce</span>
+  <span class="pill">🌱 Basil</span>
+  <span class="pill">🍃 Spinach</span>
+  <div class="divider"></div>
+  <span class="toolbar-label">Sort</span>
+  <select class="sort-select">
+    <option>Status (critical first)</option>
+    <option>Plant type</option>
+    <option>Water level ↑</option>
+    <option>Age (newest)</option>
+    <option>Last modified</option>
+    <option>Pod ID</option>
+  </select>
+  <span class="result-count">Showing 1–12 of 20 pods</span>
+</div>
+
+<!-- Grid (8 cards shown as example page) -->
+<div class="pod-grid">
+  <div class="pc-pod crit"><div class="pc-inner"><div class="pc-crop">Spinach</div><div class="pc-top"><div class="pc-id">pod_07</div><div class="pc-fault crit">water_low</div></div><div class="pc-table"><div class="pc-lbl">pH</div><div class="pc-val">4.90</div><div class="pc-lbl">EC</div><div class="pc-val">2100</div><div class="pc-lbl">Tair</div><div class="pc-val">29.1°</div><div class="pc-lbl">RH</div><div class="pc-val">71%</div></div><div class="pc-water"><div class="pc-water-label">Water <span>11%</span></div><div class="pc-track"><div class="pc-fill low" style="width:11%"></div></div></div></div></div>
+  <div class="pc-pod warn"><div class="pc-inner"><div class="pc-crop">Basil</div><div class="pc-top"><div class="pc-id">pod_02</div><div class="pc-fault">ph_low</div></div><div class="pc-table"><div class="pc-lbl">pH</div><div class="pc-val">5.70</div><div class="pc-lbl">EC</div><div class="pc-val">980</div><div class="pc-lbl">Tair</div><div class="pc-val">26.2°</div><div class="pc-lbl">RH</div><div class="pc-val">58%</div></div><div class="pc-water"><div class="pc-water-label">Water <span>42%</span></div><div class="pc-track"><div class="pc-fill med" style="width:42%"></div></div></div></div></div>
+  <div class="pc-pod warn"><div class="pc-inner"><div class="pc-crop">Lettuce</div><div class="pc-top"><div class="pc-id">pod_09</div><div class="pc-fault">temp_high</div></div><div class="pc-table"><div class="pc-lbl">pH</div><div class="pc-val">6.20</div><div class="pc-lbl">EC</div><div class="pc-val">1180</div><div class="pc-lbl">Tair</div><div class="pc-val">27.8°</div><div class="pc-lbl">RH</div><div class="pc-val">52%</div></div><div class="pc-water"><div class="pc-water-label">Water <span>61%</span></div><div class="pc-track"><div class="pc-fill" style="width:61%"></div></div></div></div></div>
+  <div class="pc-pod"><div class="pc-inner"><div class="pc-crop">Lettuce</div><div class="pc-top"><div class="pc-id">pod_01</div></div><div class="pc-table"><div class="pc-lbl">pH</div><div class="pc-val">6.04</div><div class="pc-lbl">EC</div><div class="pc-val">1243</div><div class="pc-lbl">Tair</div><div class="pc-val">24.0°</div><div class="pc-lbl">RH</div><div class="pc-val">65%</div></div><div class="pc-water"><div class="pc-water-label">Water <span>75%</span></div><div class="pc-track"><div class="pc-fill" style="width:75%"></div></div></div></div></div>
+  <div class="pc-pod"><div class="pc-inner"><div class="pc-crop">Basil</div><div class="pc-top"><div class="pc-id">pod_04</div></div><div class="pc-table"><div class="pc-lbl">pH</div><div class="pc-val">6.31</div><div class="pc-lbl">EC</div><div class="pc-val">1190</div><div class="pc-lbl">Tair</div><div class="pc-val">23.1°</div><div class="pc-lbl">RH</div><div class="pc-val">65%</div></div><div class="pc-water"><div class="pc-water-label">Water <span>83%</span></div><div class="pc-track"><div class="pc-fill" style="width:83%"></div></div></div></div></div>
+  <div class="pc-pod"><div class="pc-inner"><div class="pc-crop">Spinach</div><div class="pc-top"><div class="pc-id">pod_11</div></div><div class="pc-table"><div class="pc-lbl">pH</div><div class="pc-val">6.55</div><div class="pc-lbl">EC</div><div class="pc-val">1060</div><div class="pc-lbl">Tair</div><div class="pc-val">22.8°</div><div class="pc-lbl">RH</div><div class="pc-val">67%</div></div><div class="pc-water"><div class="pc-water-label">Water <span>91%</span></div><div class="pc-track"><div class="pc-fill" style="width:91%"></div></div></div></div></div>
+  <div class="pc-pod"><div class="pc-inner"><div class="pc-crop">Lettuce</div><div class="pc-top"><div class="pc-id">pod_15</div></div><div class="pc-table"><div class="pc-lbl">pH</div><div class="pc-val">6.12</div><div class="pc-lbl">EC</div><div class="pc-val">1320</div><div class="pc-lbl">Tair</div><div class="pc-val">23.6°</div><div class="pc-lbl">RH</div><div class="pc-val">64%</div></div><div class="pc-water"><div class="pc-water-label">Water <span>68%</span></div><div class="pc-track"><div class="pc-fill" style="width:68%"></div></div></div></div></div>
+  <div class="pc-pod"><div class="pc-inner"><div class="pc-crop">Basil</div><div class="pc-top"><div class="pc-id">pod_18</div></div><div class="pc-table"><div class="pc-lbl">pH</div><div class="pc-val">6.78</div><div class="pc-lbl">EC</div><div class="pc-val">1140</div><div class="pc-lbl">Tair</div><div class="pc-val">24.4°</div><div class="pc-lbl">RH</div><div class="pc-val">62%</div></div><div class="pc-water"><div class="pc-water-label">Water <span>79%</span></div><div class="pc-track"><div class="pc-fill" style="width:79%"></div></div></div></div></div>
+</div>
+
+<!-- Pagination bar -->
+<div class="pagination-bar">
+  <div class="pagination-info">
+    Pods <strong>1–12</strong> of <strong>20</strong>
+  </div>
+
+  <div class="page-controls">
+    <div class="page-btn nav disabled">‹</div>
+    <div class="page-btn active">1</div>
+    <div class="page-btn">2</div>
+    <div class="page-btn nav">›</div>
+  </div>
+
+  <div class="per-page-row">
+    <span class="per-page-label">Per page</span>
+    <select class="per-page-select">
+      <option>12</option>
+      <option>24</option>
+      <option>48</option>
+    </select>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:20px;font-size:12px;">
+  Ellipsis (…) appears automatically when there are 5+ pages. Changing any filter or sort resets to page 1. Page size is remembered across sessions via localStorage.
+</p>

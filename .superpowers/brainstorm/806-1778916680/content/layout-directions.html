@@ -1,0 +1,457 @@
+<style>
+  :root {
+    --bg: #0f1419;
+    --surface: #1a1f2e;
+    --surface2: #252d3d;
+    --text: #f5f1de;
+    --muted: #a8a49e;
+    --border: #3d4451;
+    --success: #7fb069;
+    --warning: #d4a373;
+    --critical: #c9566b;
+    --info: #6fa3d8;
+  }
+
+  h2 { color: var(--text); margin-bottom: 4px; }
+  .subtitle { color: var(--muted); margin-bottom: 32px; }
+
+  .cards { display: flex; gap: 24px; flex-wrap: wrap; }
+
+  .card {
+    flex: 1;
+    min-width: 280px;
+    max-width: 380px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .card.selected { border-color: var(--info); box-shadow: 0 0 0 1px var(--info); }
+  .card:hover { border-color: var(--muted); }
+
+  .card-image {
+    background: var(--bg);
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+    height: 200px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card-body { padding: 16px; }
+  .card-body h3 { color: var(--text); margin: 0 0 6px 0; font-size: 15px; }
+  .card-body p { color: var(--muted); font-size: 13px; margin: 0; line-height: 1.5; }
+
+  /* ── MOCK LAYOUT A: Sidebar ── */
+  .mock-a {
+    display: flex;
+    height: 100%;
+    gap: 6px;
+  }
+  .mock-sidebar {
+    width: 44px;
+    background: var(--surface);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px 0;
+    gap: 10px;
+    border: 1px solid var(--border);
+  }
+  .mock-sidebar-icon {
+    width: 24px; height: 24px;
+    background: var(--surface2);
+    border-radius: 6px;
+  }
+  .mock-sidebar-icon.active {
+    background: var(--info);
+    opacity: 0.9;
+  }
+  .mock-main { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+  .mock-header-bar {
+    height: 26px;
+    background: var(--surface);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    gap: 6px;
+  }
+  .mock-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+  .mock-dot.warn { background: var(--warning); }
+  .mock-dot.crit { background: var(--critical); }
+  .mock-label { width: 32px; height: 5px; background: var(--muted); border-radius: 2px; opacity: 0.4; }
+  .mock-label.short { width: 20px; }
+  .mock-content-area { flex: 1; display: flex; gap: 6px; }
+  .mock-3d {
+    flex: 1;
+    background: #0a0e14;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .mock-3d-glow {
+    position: absolute;
+    width: 60px; height: 60px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(127,176,105,0.25) 0%, transparent 70%);
+  }
+  .mock-3d-pod {
+    width: 10px; height: 14px;
+    background: var(--success);
+    border-radius: 50%;
+    opacity: 0.8;
+    box-shadow: 0 0 6px var(--success);
+  }
+  .mock-right-panel {
+    width: 54px;
+    background: var(--surface);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .mock-log-line {
+    height: 4px;
+    background: var(--surface2);
+    border-radius: 2px;
+    width: 100%;
+  }
+  .mock-log-line.highlight { background: var(--info); opacity: 0.5; }
+  .mock-grid-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+  }
+  .mock-pod-card {
+    aspect-ratio: 1;
+    background: var(--surface2);
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .mock-pod-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--success);
+  }
+  .mock-pod-dot.warn { background: var(--warning); }
+  .mock-pod-dot.crit { background: var(--critical); }
+
+  /* ── MOCK LAYOUT B: Command Center ── */
+  .mock-b { display: flex; flex-direction: column; height: 100%; gap: 6px; }
+  .mock-b-topbar {
+    height: 28px;
+    background: var(--surface);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    justify-content: space-between;
+  }
+  .mock-b-logo { display: flex; gap: 5px; align-items: center; }
+  .mock-b-logo-dot { width: 12px; height: 12px; background: var(--success); border-radius: 3px; opacity: 0.9; }
+  .mock-b-logo-text { width: 48px; height: 5px; background: var(--text); border-radius: 2px; opacity: 0.7; }
+  .mock-b-pill {
+    display: flex;
+    gap: 2px;
+    background: var(--bg);
+    border-radius: 20px;
+    padding: 2px;
+    border: 1px solid var(--border);
+  }
+  .mock-b-pill-btn {
+    padding: 2px 8px;
+    border-radius: 16px;
+    font-size: 9px;
+    color: var(--muted);
+    font-family: Inter, sans-serif;
+  }
+  .mock-b-pill-btn.active {
+    background: var(--info);
+    color: var(--bg);
+    font-weight: 600;
+  }
+  .mock-b-status { display: flex; gap: 4px; align-items: center; }
+  .mock-b-body { flex: 1; display: flex; gap: 6px; overflow: hidden; }
+  .mock-b-main { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+  .mock-b-hero {
+    flex: 1;
+    background: #0a0e14;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .mock-b-grid {
+    height: 60px;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 4px;
+  }
+  .mock-b-card {
+    background: var(--surface);
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+  .mock-b-card.warn { border-color: var(--warning); }
+  .mock-b-card.crit { border-color: var(--critical); }
+  .mock-b-drawer {
+    width: 60px;
+    background: var(--surface);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 6px;
+  }
+  .mock-b-drawer-label {
+    height: 4px;
+    background: var(--info);
+    border-radius: 2px;
+    width: 70%;
+    opacity: 0.6;
+  }
+
+  /* ── MOCK LAYOUT C: Immersive ── */
+  .mock-c {
+    position: relative;
+    height: 100%;
+    background: #070b10;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .mock-c-bg {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 60%, rgba(127,176,105,0.08) 0%, transparent 65%),
+                radial-gradient(ellipse at 80% 20%, rgba(111,163,216,0.06) 0%, transparent 50%);
+  }
+  .mock-c-topbar {
+    position: absolute;
+    top: 8px; left: 8px; right: 8px;
+    height: 24px;
+    background: rgba(26,31,46,0.75);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(61,68,81,0.6);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    justify-content: space-between;
+    z-index: 2;
+  }
+  .mock-c-pods {
+    position: absolute;
+    bottom: 8px; left: 8px; right: 8px;
+    height: 52px;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 4px;
+    z-index: 2;
+  }
+  .mock-c-card {
+    background: rgba(26,31,46,0.8);
+    backdrop-filter: blur(6px);
+    border: 1px solid rgba(61,68,81,0.5);
+    border-radius: 6px;
+  }
+  .mock-c-card.selected-card {
+    border-color: var(--info);
+    box-shadow: 0 0 8px rgba(111,163,216,0.3);
+  }
+  .mock-c-orbs {
+    position: absolute;
+    inset: 32px 0 68px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 8px;
+  }
+  .mock-c-orb {
+    width: 12px; height: 16px;
+    border-radius: 50%;
+    background: var(--success);
+    opacity: 0.7;
+    box-shadow: 0 0 8px var(--success);
+  }
+  .mock-c-orb.warn-orb { background: var(--warning); box-shadow: 0 0 8px var(--warning); }
+  .mock-c-orb.crit-orb { background: var(--critical); box-shadow: 0 0 8px var(--critical); }
+  .mock-c-orb.large { width: 18px; height: 22px; opacity: 0.9; }
+</style>
+
+<h2>Layout Direction</h2>
+<p class="subtitle">Pick the overall structure that feels right for Hydroclawnics. All three use the same Gruvbox palette.</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mock-a">
+        <div class="mock-sidebar">
+          <div class="mock-sidebar-icon active"></div>
+          <div class="mock-sidebar-icon"></div>
+          <div class="mock-sidebar-icon"></div>
+          <div style="flex:1"></div>
+          <div class="mock-sidebar-icon"></div>
+        </div>
+        <div class="mock-main">
+          <div class="mock-header-bar">
+            <div class="mock-dot"></div>
+            <div class="mock-dot warn"></div>
+            <div class="mock-dot crit"></div>
+            <div style="flex:1"></div>
+            <div class="mock-label"></div>
+          </div>
+          <div class="mock-content-area">
+            <div style="flex:1; display:flex; flex-direction:column; gap:6px;">
+              <div class="mock-3d" style="flex:1;">
+                <div class="mock-3d-glow"></div>
+                <div class="mock-grid-row" style="gap:8px; z-index:1;">
+                  <div class="mock-pod-dot"></div>
+                  <div class="mock-pod-dot warn"></div>
+                  <div class="mock-pod-dot"></div>
+                  <div class="mock-pod-dot crit"></div>
+                  <div class="mock-pod-dot"></div>
+                  <div class="mock-pod-dot"></div>
+                </div>
+              </div>
+              <div class="mock-grid-row" style="height:36px;">
+                <div class="mock-pod-card"><div class="mock-pod-dot"></div></div>
+                <div class="mock-pod-card"><div class="mock-pod-dot warn"></div></div>
+                <div class="mock-pod-card"><div class="mock-pod-dot"></div></div>
+              </div>
+            </div>
+            <div class="mock-right-panel">
+              <div class="mock-log-line highlight"></div>
+              <div class="mock-log-line"></div>
+              <div class="mock-log-line"></div>
+              <div class="mock-log-line highlight"></div>
+              <div class="mock-log-line"></div>
+              <div class="mock-log-line"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Sidebar Nav</h3>
+      <p>Icon sidebar for navigation (Farm, Alerts, Settings). Main content takes center. Agent log in right rail. Classic dashboard feel.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mock-b">
+        <div class="mock-b-topbar">
+          <div class="mock-b-logo">
+            <div class="mock-b-logo-dot"></div>
+            <div class="mock-b-logo-text"></div>
+          </div>
+          <div class="mock-b-pill">
+            <div class="mock-b-pill-btn active">Overview</div>
+            <div class="mock-b-pill-btn">3D Farm</div>
+            <div class="mock-b-pill-btn">Settings</div>
+          </div>
+          <div class="mock-b-status">
+            <div class="mock-dot"></div>
+            <div class="mock-dot warn"></div>
+          </div>
+        </div>
+        <div class="mock-b-body">
+          <div class="mock-b-main">
+            <div class="mock-b-hero">
+              <div class="mock-b-grid" style="position:absolute; top:8px; left:8px; right:8px;">
+                <div class="mock-b-card"></div>
+                <div class="mock-b-card warn"></div>
+                <div class="mock-b-card"></div>
+                <div class="mock-b-card crit"></div>
+                <div class="mock-b-card"></div>
+              </div>
+              <div style="position:absolute; bottom:8px; left:8px; right:8px; display:grid; grid-template-columns: repeat(5,1fr); gap:4px;">
+                <div class="mock-b-card"></div>
+                <div class="mock-b-card"></div>
+                <div class="mock-b-card warn"></div>
+                <div class="mock-b-card"></div>
+                <div class="mock-b-card"></div>
+              </div>
+            </div>
+          </div>
+          <div class="mock-b-drawer">
+            <div class="mock-b-drawer-label"></div>
+            <div class="mock-log-line"></div>
+            <div class="mock-log-line"></div>
+            <div class="mock-log-line highlight"></div>
+            <div class="mock-log-line"></div>
+            <div style="flex:1"></div>
+            <div class="mock-log-line"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Command Center</h3>
+      <p>Top nav with pill-tab switcher (Overview / 3D Farm / Settings). Full-width hero content. Collapsible right drawer for agent log. Feels like a polished SaaS tool.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mock-c">
+        <div class="mock-c-bg"></div>
+        <div class="mock-c-topbar">
+          <div class="mock-b-logo">
+            <div class="mock-b-logo-dot"></div>
+            <div class="mock-b-logo-text"></div>
+          </div>
+          <div class="mock-b-status">
+            <div class="mock-dot"></div>
+            <div class="mock-dot warn"></div>
+          </div>
+        </div>
+        <div class="mock-c-orbs">
+          <div class="mock-c-orb large"></div>
+          <div class="mock-c-orb"></div>
+          <div class="mock-c-orb warn-orb"></div>
+          <div class="mock-c-orb large"></div>
+          <div class="mock-c-orb crit-orb"></div>
+          <div class="mock-c-orb"></div>
+          <div class="mock-c-orb large"></div>
+          <div class="mock-c-orb warn-orb"></div>
+          <div class="mock-c-orb"></div>
+        </div>
+        <div class="mock-c-pods">
+          <div class="mock-c-card"></div>
+          <div class="mock-c-card selected-card"></div>
+          <div class="mock-c-card"></div>
+          <div class="mock-c-card"></div>
+          <div class="mock-c-card"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Immersive Overlay</h3>
+      <p>3D scene is the full background at all times. Floating glass-morphism panels for nav and pod cards. Maximum wow factor for demo, but trickier to fit all 20+ pods.</p>
+    </div>
+  </div>
+
+</div>

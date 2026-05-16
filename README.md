@@ -59,3 +59,4 @@ After building, FastAPI serves `frontend/dist/` automatically at `/`.
 
 Credits:
 <a href="https://www.flaticon.com/free-icons/lettuce" title="lettuce icons">Lettuce icons created by Freepik - Flaticon</a>
+<a href="https://www.flaticon.com/free-icons/tomato" title="tomato icons">Tomato icons created by Freepik - Flaticon</a>
