@@ -101,4 +101,10 @@ describe('createPlantMesh', () => {
     const stem = g.children.find(c => c instanceof THREE.Mesh && !c.userData.isFoliage)
     expect(stem.position.y).toBeCloseTo(0.08 + 0.3 / 2, 5)
   })
+
+  it('stage 3: all 5 foliage meshes (4 cluster + canopy) have isFoliage=true', () => {
+    const g = createPlantMesh(3, 0.9)
+    const foliage = g.children.filter(c => c instanceof THREE.Mesh && c.userData.isFoliage)
+    expect(foliage.length).toBe(5)
+  })
 })
