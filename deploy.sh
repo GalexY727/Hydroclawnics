@@ -63,10 +63,7 @@ nohup "$VENV/bin/uvicorn" main:app --host 0.0.0.0 --port 8000 \
 echo "  backend PID $!"
 sleep 2  # give backend time to init DB
 
-TABLE_COUNT=$(( (TOTAL_PODS + PODS_PER_TABLE - 1) / PODS_PER_TABLE ))
-if [[ "$TABLE_COUNT" -lt 1 ]]; then
-  TABLE_COUNT=1
-fi
+TABLE_COUNT=4
 echo "Starting $TABLE_COUNT table agents (PODS_PER_TABLE=$PODS_PER_TABLE)..."
 for i in $(seq 1 "$TABLE_COUNT"); do
   TABLE_ID="T$i"
