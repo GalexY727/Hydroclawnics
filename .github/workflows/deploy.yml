@@ -8,13 +8,13 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to brev instance
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.BREV_HOST }}
-          username: ${{ secrets.BREV_USER }}
-          key: ${{ secrets.BREV_SSH_PRIVATE_KEY }}
-          envs: NVIDIA_API_KEY
-          script: |
-            export NVIDIA_API_KEY="${{ secrets.NVIDIA_API_KEY }}"
-            bash /home/ubuntu/your-repo/deploy.sh
+      - name: Install brev CLI
+        run: curl -fsSL https://raw.githubusercontent.com/brevdev/brev-cli/main/bin/install-latest.sh | sudo bash
+
+      - name: Deploy
+        env:
+          BREV_API_KEY: ${{ secrets.BREV_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+        run: |
+          brev login --api-key $BREV_API_KEY
+          brev exec hydroclawnics -- 'cd /home/ubuntu/Hydroclawnics-Simulation && git pull origin main && NVIDIA_API_KEY=$NVIDIA_API_KEY bash deploy.sh'

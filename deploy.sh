@@ -1,4 +1,4 @@
-# /home/ubuntu/your-repo/deploy.sh
+# /home/ubuntu/Hydroclawnics-Simulation/deploy.sh
 #!/bin/bash
 set -e
 
