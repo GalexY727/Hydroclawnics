@@ -269,7 +269,7 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
             tools=tools,
             tool_choice="auto",
             temperature=0.3,
-            max_tokens=2048,
+            max_tokens=4096,
         )
         if response.choices[0].finish_reason == "length":
             logger.warning("[%s] API truncated response (finish_reason=length)", table_id)
