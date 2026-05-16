@@ -5,7 +5,7 @@ import json
 import logging
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -25,12 +25,13 @@ class FaultRequest(BaseModel):
 
 
 class ActionRequest(BaseModel):
-    timestamp: str
-    pod_id: str
-    sensor_state: dict
-    diagnosis: str
-    action: str
-    reasoning: str
+    """Legacy typed model kept for supervisor compat — /api/action also accepts raw JSON."""
+    timestamp: str = ""
+    pod_id: str = ""
+    sensor_state: dict = {}
+    diagnosis: str = ""
+    action: str = ""
+    reasoning: str = ""
 
 
 class ThoughtRequest(BaseModel):
@@ -177,8 +178,11 @@ async def post_fault(pod_id: str, body: FaultRequest) -> dict:
 
 
 @app.post("/api/action")
-async def post_action(body: ActionRequest) -> dict:
-    entry = body.model_dump()
+async def post_action(request: Request) -> dict:
+    try:
+        entry = await request.json()
+    except Exception:
+        return {"ok": False, "error": "invalid JSON"}
     state.append_decision(entry)
     await broadcast({"type": "agent_decision", "entry": entry})
     return {"ok": True}

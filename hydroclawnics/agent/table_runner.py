@@ -5,6 +5,8 @@ import asyncio
 import json
 import logging
 import os
+import re
+import time
 from datetime import datetime, timezone
 
 from openai import AsyncOpenAI
@@ -111,40 +113,136 @@ def _build_prompt(
     zone_state = sim_bridge.get_sensor_state(table_id)
     humidity = zone_state.get("humidity_pct", "N/A")
     water_level = zone_state.get("water_level", "N/A")
+    water_temp_c = zone_state.get("water_temp_c", zone_state.get("temp_c", "N/A"))
+    pump_status = "on" if zone_state.get("fan_on") else "off"
+    zone_ts = zone_state.get("timestamp", datetime.now(timezone.utc).isoformat())
 
     lines = [
-        f"## Zone {table_id} ({crop.upper()}) Sensor Report",
-        f"Status: **{reading.status.upper()}**",
-        f"Pods: {', '.join(reading.pod_ids)}",
-        f"air_temp_c: {reading.avg_temp_c}°C | ph: {reading.avg_ph} | "
-        f"ec_ppm: {reading.avg_ec_ppm} | light_lux: {reading.avg_light_lux}",
-        f"humidity_%: {humidity} | water_level_%: {water_level}",
-        f"Health: {reading.healthy_count} healthy, "
-        f"{reading.warning_count} warning, {reading.critical_count} critical",
+        f"## Zone {table_id} ({crop.upper()}) — Status: {reading.status.upper()}",
+        (
+            f"Zone: air_temp_c={reading.avg_temp_c}°C | water_temp_c={water_temp_c}°C | "
+            f"relative_humidity_percent={humidity} | water_level_percent={water_level} | "
+            f"pump_status={pump_status} | flow_rate_l_min=N/A"
+        ),
+        f"Avg: ph={reading.avg_ph} | ec_ppm={reading.avg_ec_ppm} | light_lux={reading.avg_light_lux}",
+        f"Health: {reading.healthy_count} ok / {reading.warning_count} warn / {reading.critical_count} crit",
     ]
+
     if reading.fault_types:
-        lines.append(f"Active faults: {', '.join(reading.fault_types)}")
+        lines.append(f"Faults: {', '.join(reading.fault_types)}")
+
+    if reading.pods:
+        lines.append(
+            "\nPod data (id | crop | plant_status | fault_type | ph | ec_ppm | "
+            "air_temp_c | light_lux | age_hours | plant_height_cm | timestamp):"
+        )
+        for pod in reading.pods:
+            age_h = round(pod.get("age_hours", 0.0), 1)
+            plant_h_cm = round(age_h * 0.05, 1)
+            lines.append(
+                f"  {pod.get('id','?')} | {pod.get('crop', crop)} | "
+                f"{pod.get('status','?')} | {pod.get('fault_type','none')} | "
+                f"ph={pod.get('ph','?')} | ec={pod.get('ec_ppm','?')} | "
+                f"air_temp={pod.get('temp_c','?')}°C | lux={pod.get('light_lux','?')} | "
+                f"age={age_h}h | height={plant_h_cm}cm | {zone_ts}"
+            )
 
     if directives:
-        lines.append("\n## PENDING SUPERVISOR DIRECTIVES — YOU MUST ACT ON THESE")
+        lines.append("\n## PENDING SUPERVISOR DIRECTIVES — ACT ON THESE NOW")
         for d in directives:
             lines.append(
                 f"- [{d.get('priority', 'normal').upper()}] "
                 f"{d.get('action', '')}: {d.get('reasoning', '')}"
             )
         lines.append(
-            "\nThe supervisor has issued the above directive(s). "
-            "Call the appropriate tool(s) to carry them out, then confirm completion."
+            "\nCall the appropriate tool(s) to carry out the directive(s), then confirm."
         )
     else:
         lines.append(
-            "\nCheck all parameters against the target ranges for "
-            f"{crop.upper()}. Call tools to correct any issues, or report no_op if healthy."
+            f"\nCheck all parameters vs {crop.upper()} targets. "
+            "Call tools to fix issues, or no_op if all in range."
         )
+
     return "\n".join(lines)
 
 
+def parse_agent_response(response_text: str) -> dict:
+    """Parse the structured text output from the table agent.
+
+    Expected format:
+        ZONE: [zone_id]  CROP: [crop_name]
+        STATUS: [healthy/warning/critical]
+        OBSERVATIONS:
+          - [param]: [value] → [in range / HIGH / LOW]
+        ACTIONS:
+          - [tool_name]([params]) — [reason]
+
+    Returns a structured dict, or a safe default on parse failure.
+    """
+    default: dict = {"zone_id": "unknown", "status": "unknown", "observations": [], "actions": []}
+    if not response_text:
+        return default
+    try:
+        result: dict = {"zone_id": "unknown", "status": "unknown", "observations": [], "actions": []}
+
+        m = re.search(r"ZONE:\s*(\S+)", response_text, re.IGNORECASE)
+        if m:
+            result["zone_id"] = m.group(1).rstrip(",").strip()
+
+        m = re.search(r"STATUS:\s*(\w+)", response_text, re.IGNORECASE)
+        if m:
+            result["status"] = m.group(1).lower()
+
+        obs_m = re.search(r"OBSERVATIONS:(.*?)(?:ACTIONS:|$)", response_text, re.DOTALL | re.IGNORECASE)
+        if obs_m:
+            for line in obs_m.group(1).splitlines():
+                line = line.strip().lstrip("-").strip()
+                if not line:
+                    continue
+                # param: value → flag
+                parts = re.match(r"([^:]+):\s*([^→\-]+)[→\-]+\s*(.+)", line)
+                if parts:
+                    result["observations"].append({
+                        "param": parts.group(1).strip(),
+                        "value": parts.group(2).strip(),
+                        "flag": parts.group(3).strip(),
+                    })
+
+        act_m = re.search(r"ACTIONS:(.*?)$", response_text, re.DOTALL | re.IGNORECASE)
+        if act_m:
+            for line in act_m.group(1).splitlines():
+                line = line.strip().lstrip("-").strip()
+                if not line or line.lower().startswith("no_op"):
+                    continue
+                # tool_name(params) — reason
+                parts = re.match(r"(\w+)\(([^)]*)\)\s*[—\-]+\s*(.+)", line)
+                if parts:
+                    tool_name = parts.group(1).strip()
+                    params_str = parts.group(2).strip()
+                    reason = parts.group(3).strip()
+                    params: dict = {}
+                    for segment in params_str.split(","):
+                        segment = segment.strip()
+                        if "=" in segment:
+                            k, v = segment.split("=", 1)
+                            k, v = k.strip(), v.strip()
+                            try:
+                                params[k] = int(v)
+                            except ValueError:
+                                try:
+                                    params[k] = float(v)
+                                except ValueError:
+                                    params[k] = v
+                    result["actions"].append({"tool": tool_name, "params": params, "reason": reason})
+
+        return result
+    except Exception as exc:
+        logger.warning("parse_agent_response failed (%s) | raw: %.200s", exc, response_text)
+        return default
+
+
 async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
+    cycle_start = time.monotonic()
     reading = sensor_poller.read_table(table_id)
     if reading is None:
         logger.warning("No sensor data available for %s — skipping cycle", table_id)
@@ -169,7 +267,7 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
             tools=tools,
             tool_choice="auto",
             temperature=0.3,
-            max_tokens=1024,
+            max_tokens=400,
         )
         msg = response.choices[0].message
         assistant_msg: dict = {"role": "assistant"}
@@ -198,7 +296,8 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
             params.setdefault("zone_id", table_id)
 
             result = execute_tool(tc.function.name, params)
-            entry = alog.log(
+            # Log each tool call for detailed audit trail
+            alog.log(
                 agent_type="table",
                 table_id=table_id,
                 tool=tc.function.name,
@@ -206,7 +305,6 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
                 result=result,
                 reasoning=reasoning_text or None,
             )
-            asyncio.create_task(alog.broadcast_action(entry))
             actions_taken.append({"tool": tc.function.name, "params": params, "result": result})
             tool_results.append({
                 "role": "tool",
@@ -216,11 +314,20 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
 
         messages.extend(tool_results)
 
-    if not actions_taken:
-        entry = alog.log(
-            "table", table_id, "no_op", {}, {"status": reading.status}, reasoning_text or None
-        )
-        asyncio.create_task(alog.broadcast_action(entry))
+    parsed = parse_agent_response(reasoning_text)
+    cycle_ms = int((time.monotonic() - cycle_start) * 1000)
+    effective_status = parsed.get("status") or reading.status
+
+    # One structured cycle entry — this is what gets broadcast to the frontend
+    cycle_entry = alog.log_cycle(
+        zone_id=table_id,
+        status=effective_status,
+        observations=parsed.get("observations", []),
+        actions_taken=actions_taken,
+        raw_reasoning=reasoning_text,
+        cycle_duration_ms=cycle_ms,
+    )
+    asyncio.create_task(alog.broadcast_action(cycle_entry))
 
     for d in directives:
         message_bus.mark_directive_consumed(d["id"])
@@ -240,7 +347,7 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
         "ts": datetime.now(timezone.utc).isoformat(),
     })
 
-    logger.info("[%s] Cycle complete — %d action(s)", table_id, len(actions_taken))
+    logger.info("[%s] Cycle complete — %d action(s) in %dms", table_id, len(actions_taken), cycle_ms)
 
 
 async def main(table_id: str) -> None:

@@ -24,6 +24,7 @@ class SensorReading:
     healthy_count: int
     status: str
     fault_types: list[str]
+    pods: list[dict] = field(default_factory=list)
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -70,6 +71,7 @@ def read_all() -> dict[str, SensorReading]:
             healthy_count=healthy,
             status=status,
             fault_types=faults,
+            pods=table_pods,
         )
 
     return readings

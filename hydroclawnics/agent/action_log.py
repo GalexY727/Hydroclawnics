@@ -54,21 +54,37 @@ def log(
     return entry
 
 
+def log_cycle(
+    zone_id: str,
+    status: str,
+    observations: list[dict],
+    actions_taken: list[dict],
+    raw_reasoning: str,
+    cycle_duration_ms: int,
+) -> dict:
+    entry = {
+        "ts": _now(),
+        "zone_id": zone_id,
+        "status": status,
+        "observations": observations,
+        "actions_taken": actions_taken,
+        "raw_reasoning": raw_reasoning[:500],
+        "cycle_duration_ms": cycle_duration_ms,
+    }
+    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with LOG_FILE.open("a", encoding="utf-8") as fp:
+        fp.write(json.dumps(entry) + "\n")
+    DECISIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with DECISIONS_FILE.open("a", encoding="utf-8") as fp:
+        fp.write(json.dumps(entry) + "\n")
+    return entry
+
+
 async def broadcast_action(entry: dict) -> None:
     try:
         import httpx
         async with httpx.AsyncClient(timeout=2.0) as client:
-            await client.post(
-                f"{BACKEND_URL}/api/action",
-                json={
-                    "timestamp": entry["ts"],
-                    "pod_id": entry.get("table_id") or "supervisor",
-                    "sensor_state": entry.get("params") or {},
-                    "diagnosis": entry.get("reasoning") or "",
-                    "action": entry["tool"],
-                    "reasoning": entry.get("reasoning") or "",
-                },
-            )
+            await client.post(f"{BACKEND_URL}/api/action", json=entry)
     except Exception:
         pass
 
