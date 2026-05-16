@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import AgentLog from '../components/logs/AgentLog'
+import AgentLog from '../components/AgentLog'
 import Farm3D from '../components/farm/Farm3D'
 import Navbar from '../components/layout/Navbar'
 import PodDetailModal from '../components/pods/PodDetailModal'
