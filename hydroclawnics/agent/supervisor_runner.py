@@ -61,12 +61,12 @@ def _build_prompt(
     for tid in sorted(readings):
         r = readings[tid]
         crop = CROP_MAP.get(tid, "unknown")
-        fault_str = f", faults=[{', '.join(r.fault_types)}]" if r.fault_types else ""
+        condition_str = f", out_of_range=[{', '.join(r.fault_types)}]" if r.fault_types else ""
         lines.append(
             f"**{tid} ({crop})** [{r.status.upper()}] — "
             f"temp={r.avg_temp_c}°C, pH={r.avg_ph}, EC={r.avg_ec_ppm} ppm, "
             f"crit={r.critical_count}, warn={r.warning_count}, ok={r.healthy_count}"
-            + fault_str
+            + condition_str
         )
 
     if reports:

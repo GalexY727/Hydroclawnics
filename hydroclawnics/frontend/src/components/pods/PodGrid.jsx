@@ -12,12 +12,6 @@ const SORT_OPTIONS = [
   { value: 'id',         label: 'Pod ID' },
 ]
 
-const WATER_COLOR = (pct) => {
-  const n = Number(pct) || 0
-  if (n < 20) return 'var(--color-critical)'
-  if (n < 50) return 'var(--color-warning)'
-  return 'var(--color-info)'
-}
 
 const SIMULATION_FAULTS = [
   { id: 'ph_crash', label: 'pH crash' },
@@ -38,7 +32,6 @@ const STATUS_BG = {
 function PodCard({ pod, onSelect }) {
   const borderColor = STATUS_BORDER[pod.status] || STATUS_BORDER.healthy
   const bg = STATUS_BG[pod.status] || 'var(--color-surface)'
-  const waterPct = Number(pod.water_level) || 0
   const hasFault = pod.fault_type && pod.fault_type !== 'none'
 
   return (
@@ -90,18 +83,7 @@ function PodCard({ pod, onSelect }) {
           ))}
         </div>
 
-        <div className="mt-2.5">
-          <div className="mb-1 flex justify-between text-[11px]" style={{ color: 'var(--color-muted)' }}>
-            <span>Water</span>
-            <span className="font-semibold" style={{ color: 'var(--color-text)' }}>{waterPct}%</span>
-          </div>
-          <div className="h-1 overflow-hidden rounded-sm" style={{ background: 'var(--color-surface-2)' }}>
-            <div
-              className="h-full rounded-sm transition-[width] duration-300"
-              style={{ width: `${waterPct}%`, background: WATER_COLOR(waterPct) }}
-            />
-          </div>
-        </div>
+        
       </div>
     </button>
   )

@@ -176,8 +176,8 @@ def _build_prompt(
 
     if reading.fault_types:
         lines.append(
-            f"ACTIVE SIMULATED FAULTS: {', '.join(reading.fault_types)}. "
-            "These override apparently-normal averages; do not return no_op until each faulted pod has a corrective action."
+            f"ACTIVE OUT-OF-RANGE CONDITIONS: {', '.join(reading.fault_types)}. "
+            "These override apparently-normal averages; do not return no_op until each affected pod has a corrective action."
         )
 
     if reading.pods:
@@ -262,7 +262,7 @@ def _dynamic_repair_for_pod(pod: dict) -> tuple[str, dict, str] | None:
         if repair:
             return repair
     if fault == "humidity_high":
-        return "enter_high_humidity_mode", {}, "active humidity fault"
+        return "enter_high_humidity_mode", {}, "humidity is above the healthy range"
 
     crop = pod.get("crop", "lettuce")
     targets = _CROP_TARGETS.get(crop, _CROP_TARGETS["lettuce"])
@@ -305,7 +305,7 @@ def _fallback_range_actions(reading: sensor_poller.SensorReading, cycle_id: str)
             "tool": tool_name,
             "params": params,
             "result": result,
-            "reason": f"Safety fallback restored healthy range: {reason}",
+            "reason": f"Reading drifted out of range; correcting now: {reason}",
             "status": status if status in ("healthy", "warning", "critical") else reading.status,
             "cycle_id": cycle_id,
         })
@@ -554,7 +554,7 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
         if fallback_actions:
             actions_taken.extend(fallback_actions)
             parsed["observations"] = parsed.get("observations") or [
-                {"param": ft, "value": "", "flag": "active simulated fault"}
+                {"param": ft, "value": "", "flag": "outside healthy range"}
                 for ft in reading.fault_types
             ]
             if not parsed["observations"]:

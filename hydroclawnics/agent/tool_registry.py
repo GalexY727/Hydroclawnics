@@ -15,7 +15,7 @@ TOOLS: list[ToolDef] = [
         name="turn_fan_on",
         description=(
             "Activate the zone ventilation fan. Use when zone temperature exceeds target by >2°C, "
-            "humidity is elevated above 75%, or air needs circulation after a fault event. "
+            "humidity is elevated above 75%, or air needs circulation after an out-of-range event. "
             "Has immediate cooling and air-exchange effect."
         ),
         parameters={
@@ -210,7 +210,7 @@ TOOLS: list[ToolDef] = [
         description=(
             "Activate heat stress emergency protocol: sets fan to 100%, opens vent, enables cooler, "
             "disables heater. Use when zone temperature exceeds 32°C or any pod reports a "
-            "heat_stress fault. This is a compound emergency action."
+            "heat-stress condition. This is a compound emergency action."
         ),
         parameters={
             "type": "object",
