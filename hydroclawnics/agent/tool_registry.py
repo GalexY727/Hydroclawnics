@@ -232,10 +232,31 @@ TOOLS: list[ToolDef] = [
         },
     ),
     ToolDef(
+        name="set_light_level",
+        description=(
+            "Set a pod's grow light level to a target lux value. Use when light_lux is outside "
+            "the crop's healthy range. Calculate target_lux as the midpoint of the crop's light range."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "pod_id": {"type": "string", "description": "Pod ID (e.g. pod_001)"},
+                "target_lux": {
+                    "type": "number",
+                    "minimum": 1000,
+                    "maximum": 60000,
+                    "description": "Target light intensity in lux",
+                },
+            },
+            "required": ["pod_id", "target_lux"],
+        },
+    ),
+    ToolDef(
         name="dose_acid",
         description=(
             "Add acid solution to lower the pH of a specific pod's solution. Use when a pod's pH "
-            "is above the target range. Specify amount_ml between 1–50. Each 10 ml lowers pH by "
+            "is above the target range. Calculate amount_ml from the current pH and crop target midpoint. "
+            "Each 10 ml lowers pH by "
             "~0.2 units. Target only the pod(s) that are out of range."
         ),
         parameters={
@@ -245,8 +266,8 @@ TOOLS: list[ToolDef] = [
                 "amount_ml": {
                     "type": "number",
                     "minimum": 1,
-                    "maximum": 50,
-                    "description": "Volume of acid solution to add in millilitres (1–50)",
+                    "maximum": 120,
+                    "description": "Volume of acid solution to add in millilitres",
                 },
             },
             "required": ["pod_id", "amount_ml"],
@@ -256,7 +277,7 @@ TOOLS: list[ToolDef] = [
         name="dose_base",
         description=(
             "Add pH-up (base) solution to raise the pH of a specific pod's solution. Use when a "
-            "pod's pH is below the target range. Specify amount_ml between 1–50. Each 10 ml raises "
+            "pod's pH is below the target range. Calculate amount_ml from the current pH and crop target midpoint. Each 10 ml raises "
             "pH by ~0.2 units. Target only the pod(s) that are out of range."
         ),
         parameters={
@@ -266,8 +287,8 @@ TOOLS: list[ToolDef] = [
                 "amount_ml": {
                     "type": "number",
                     "minimum": 1,
-                    "maximum": 50,
-                    "description": "Volume of base solution to add in millilitres (1–50)",
+                    "maximum": 120,
+                    "description": "Volume of base solution to add in millilitres",
                 },
             },
             "required": ["pod_id", "amount_ml"],
@@ -277,8 +298,8 @@ TOOLS: list[ToolDef] = [
         name="dose_nutrients",
         description=(
             "Add concentrated nutrient solution to raise the EC of a specific pod. Use when a "
-            "pod's EC is below the target range for the crop. Specify amount_ml between 10–200. "
-            "Each 50 ml raises EC by ~50 ppm. Target only the pod(s) that are out of range."
+            "pod's EC is below the target range for the crop. Calculate amount_ml from the current EC "
+            "and crop target midpoint. Each 1 ml raises EC by ~1 ppm. Target only the pod(s) that are out of range."
         ),
         parameters={
             "type": "object",
@@ -287,8 +308,8 @@ TOOLS: list[ToolDef] = [
                 "amount_ml": {
                     "type": "number",
                     "minimum": 10,
-                    "maximum": 200,
-                    "description": "Volume of nutrient concentrate to add in millilitres (10–200)",
+                    "maximum": 1500,
+                    "description": "Volume of nutrient concentrate to add in millilitres",
                 },
             },
             "required": ["pod_id", "amount_ml"],
@@ -298,8 +319,8 @@ TOOLS: list[ToolDef] = [
         name="flush_reservoir",
         description=(
             "Dilute a specific pod's solution with fresh water to lower its EC. Use when a pod's "
-            "EC is above the target range. Specify flush_percent (10–50). Each 10% flush reduces "
-            "EC by roughly 8–12%. Target only the pod(s) that are out of range."
+            "EC is above the target range. Calculate flush_percent from current EC and crop target midpoint. "
+            "Target only the pod(s) that are out of range."
         ),
         parameters={
             "type": "object",
@@ -308,8 +329,8 @@ TOOLS: list[ToolDef] = [
                 "flush_percent": {
                     "type": "number",
                     "minimum": 10,
-                    "maximum": 50,
-                    "description": "Percentage of solution to replace with fresh water (10–50)",
+                    "maximum": 80,
+                    "description": "Percentage of solution to replace with fresh water",
                 },
             },
             "required": ["pod_id", "flush_percent"],

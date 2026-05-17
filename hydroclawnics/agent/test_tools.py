@@ -24,6 +24,7 @@ _TEST_CASES = [
     ("set_climate_target",       {"pod_id": "pod_001", "target_temp_c": 23.0, "target_humidity_percent": 60.0}),
     ("enter_heat_stress_mode",   {"pod_id": "pod_002"}),
     ("enter_high_humidity_mode", {"pod_id": "pod_003"}),
+    ("set_light_level",          {"pod_id": "pod_004", "target_lux": 15000.0}),
     ("dose_acid",                {"pod_id": "pod_001", "amount_ml": 10.0}),
     ("dose_base",                {"pod_id": "pod_002", "amount_ml": 20.0}),
     ("dose_nutrients",           {"pod_id": "pod_003", "amount_ml": 50.0}),

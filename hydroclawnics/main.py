@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 import agent_bridge
 import state
-from simulator import CROPS, SENSORS_FILE, SimulatorEngine, inject_fault
+from simulator import SENSORS_FILE, SimulatorEngine, inject_fault
 
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
@@ -69,43 +69,30 @@ def _apply_agent_tool_to_pod(tool: str, params: dict) -> bool:
     if pod is None:
         return False
 
-    ranges = CROPS.get(pod.crop, CROPS["lettuce"])
-
-    def midpoint(metric: str) -> float:
-        lo, hi = ranges[metric]
-        return (lo + hi) / 2.0
-
     if tool == "dose_acid":
         amount_ml = float(params.get("amount_ml", 10))
         pod.ph = max(4.0, pod.ph - amount_ml * 0.02)
-        if pod.fault_type in {"ph_high"} or pod.ph > ranges["ph"][1]:
-            pod.ph = midpoint("ph")
         pod.last_action = tool
     elif tool == "dose_base":
         amount_ml = float(params.get("amount_ml", 10))
         pod.ph = min(9.0, pod.ph + amount_ml * 0.02)
-        if pod.fault_type in {"ph_crash", "ph_low"} or pod.ph < ranges["ph"][0]:
-            pod.ph = midpoint("ph")
         pod.last_action = tool
     elif tool == "dose_nutrients":
         amount_ml = float(params.get("amount_ml", 50))
         pod.ec_ppm = min(5000.0, pod.ec_ppm + amount_ml * 1.0)
-        if pod.fault_type in {"nutrient_low", "ec_low"} or pod.ec_ppm < ranges["ec_ppm"][0]:
-            pod.ec_ppm = midpoint("ec_ppm")
         pod.last_action = tool
     elif tool == "flush_reservoir":
         flush_pct = float(params.get("flush_percent", 20)) / 100.0
         pod.ec_ppm = max(100.0, pod.ec_ppm * (1.0 - flush_pct))
-        if pod.fault_type in {"nutrient_spike", "ec_high"} or pod.ec_ppm > ranges["ec_ppm"][1]:
-            pod.ec_ppm = midpoint("ec_ppm")
         pod.last_action = tool
     elif tool in {"turn_fan_on", "set_fan_speed", "turn_cooler_on", "enter_heat_stress_mode"}:
         pod.temp_c = max(12.0, pod.temp_c - 4.0)
-        if pod.fault_type in {"heat_stress", "temp_high"} or pod.temp_c > ranges["temp_c"][1]:
-            pod.temp_c = midpoint("temp_c")
         pod.last_action = tool
     elif tool in {"turn_heater_on"}:
         pod.temp_c = min(40.0, pod.temp_c + 4.0)
+        pod.last_action = tool
+    elif tool == "set_light_level":
+        pod.light_lux = max(1000.0, min(60000.0, float(params.get("target_lux", pod.light_lux))))
         pod.last_action = tool
     else:
         return False
