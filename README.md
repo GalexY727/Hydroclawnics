@@ -63,3 +63,4 @@ Credits:
 <a href="https://www.flaticon.com/free-icons/basil" title="basil icons">Basil icons created by Freepik - Flaticon</a>
 <a href="https://www.flaticon.com/free-icons/spinach" title="spinach icons">Spinach icons created by Freepik - Flaticon</a>
 <a href="https://www.flaticon.com/free-icons/lettuce" title="lettuce icons">Greens icons created by Freepik - Flaticon</a>
+.
