@@ -58,9 +58,13 @@ npm run build
 After building, FastAPI serves `frontend/dist/` automatically at `/`.
 
 Credits:
+
 <a href="https://www.flaticon.com/free-icons/lettuce" title="lettuce icons">Lettuce icons created by Freepik - Flaticon</a>
+<br />
 <a href="https://www.flaticon.com/free-icons/tomato" title="tomato icons">Tomato icons created by Freepik - Flaticon</a>
+<br />
 <a href="https://www.flaticon.com/free-icons/basil" title="basil icons">Basil icons created by Freepik - Flaticon</a>
+<br />
 <a href="https://www.flaticon.com/free-icons/spinach" title="spinach icons">Spinach icons created by Freepik - Flaticon</a>
+<br />
 <a href="https://www.flaticon.com/free-icons/lettuce" title="lettuce icons">Greens icons created by Freepik - Flaticon</a>
-.
