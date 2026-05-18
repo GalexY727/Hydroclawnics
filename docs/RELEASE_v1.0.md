@@ -101,7 +101,7 @@ cd hydroclawnics/frontend
 npm run build
 ```
 
-After building, FastAPI serves `frontend/dist/` at `/`. See fastAPI docs at `<frontend_url>/docs`
+After building, FastAPI serves `frontend/dist/` at `/`. See the FastAPI docs at `/docs` on the same host.
 
 ## Agent Commands
 
