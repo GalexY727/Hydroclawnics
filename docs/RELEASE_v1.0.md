@@ -13,7 +13,7 @@ Hydroclawnics v1.0 is the Hack-A-Claw release of a real-time hydroponics farm si
 - Fault injection for pH crash, nutrient spike, and low nutrients.
 - NVIDIA-powered table agents and supervisor agent using the OpenAI-compatible NVIDIA API.
 - Simulation and optional Arduino hardware routing through `HARDWARE_MODE`.
-- SQLite message bus plus JSONL sensor, action, and decision logs.
+- SQLite message bus plus sensor snapshots in `hydroclawnics/sensors/pod_states.json` and JSONL action and decision logs.
 
 ## Tech Stack
 
