@@ -5,6 +5,15 @@ const STAGES = ['Seedling', 'Vegetative', 'Flowering', 'Production']
 
 export const STATUS_ORDER = { critical: 0, warning: 1, recovering: 2, verifying: 3, healthy: 4 }
 export const LIFECYCLE_STEPS = ['detected', 'diagnosing', 'action_planned', 'action_applied', 'stabilizing', 'verifying', 'resolved']
+export const INCIDENT_STAGES = [
+  { id: 'detected', label: 'Detected' },
+  { id: 'diagnosing', label: 'Diagnosed' },
+  { id: 'action_planned', label: 'Planned' },
+  { id: 'action_applied', label: 'Applied' },
+  { id: 'stabilizing', label: 'Stabilizing' },
+  { id: 'verifying', label: 'Verifying' },
+  { id: 'resolved', label: 'Resolved' },
+]
 
 export const TARGET_RANGES = {
   ph: { label: 'pH', min: 5.8, max: 6.4, unit: '', digits: 2, scaleMin: 4.8, scaleMax: 7.4 },
@@ -174,11 +183,16 @@ export function metricState(value, metricKey) {
   }
 }
 
-export function makeEvent({ pod, fault, lifecycle, action, result }) {
+export function makeIncidentId(pod, fault, timestamp = Date.now()) {
+  return `${pod.id}-${fault?.id || 'scan'}-${timestamp}`
+}
+
+export function makeEvent({ pod, fault, lifecycle, action, result, incidentId }) {
   const metricValue = fault?.metric ? formatMetric(pod[fault.metric], fault.metric) : 'Telemetry nominal'
   const lifecycleState = lifecycle || pod.lifecycle || 'stable'
   return {
     id: `${Date.now()}-${pod.id}-${lifecycleState}-${Math.random().toString(16).slice(2)}`,
+    incidentId: incidentId || (fault ? makeIncidentId(pod, fault) : null),
     timestamp: new Date().toISOString(),
     severity: fault?.severity || pod.severity || 'info',
     podId: pod.id,
@@ -263,11 +277,73 @@ export function advanceFaultPod(pod, fault, lifecycle) {
 
 export function buildSeedEvents(pods) {
   const list = Object.values(pods)
+  const firstIncident = makeIncidentId(list[4], FAULT_TYPES[1], Date.now() - 42 * 60000)
+  const secondIncident = makeIncidentId(list[11], FAULT_TYPES[7], Date.now() - 27 * 60000)
   return [
-    makeEvent({ pod: list[4], fault: FAULT_TYPES[1], lifecycle: 'resolved', result: 'pH returned to 6.11 after micro-dose' }),
-    makeEvent({ pod: list[11], fault: FAULT_TYPES[7], lifecycle: 'verified', result: 'Humidity recovered to 58%' }),
+    makeEvent({ pod: list[4], fault: FAULT_TYPES[1], lifecycle: 'resolved', result: 'pH returned to 6.11 after micro-dose', incidentId: firstIncident }),
+    makeEvent({ pod: list[11], fault: FAULT_TYPES[7], lifecycle: 'verifying', result: 'Humidity recovered to 58%', incidentId: secondIncident }),
     makeEvent({ pod: list[0], lifecycle: 'stable', result: '28 pods scanned. 28 stable.' }),
   ]
+}
+
+export function buildIncidents(events, pods = {}) {
+  const groups = events
+    .filter((event) => event.eventType === 'intervention' || event.incidentId)
+    .reduce((acc, event) => {
+      const key = event.incidentId || `${event.podId}-${event.issue}`
+      if (!acc[key]) acc[key] = []
+      acc[key].push(event)
+      return acc
+    }, {})
+
+  return Object.entries(groups).map(([incidentId, group]) => {
+    const ordered = [...group].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+    const latest = ordered[ordered.length - 1]
+    const pod = pods[latest.podId] || {}
+    const stageIndex = Math.max(0, LIFECYCLE_STEPS.indexOf(latest.lifecycle))
+    const stageIds = new Set(ordered.map((event) => event.lifecycle))
+    const terminal = latest.lifecycle === 'resolved' || latest.lifecycle === 'escalated' || latest.lifecycle === 'failed'
+    return {
+      id: incidentId,
+      title: latest.issue,
+      severity: latest.severity,
+      podId: latest.podId,
+      crop: latest.crop || pod.crop,
+      zone: latest.zone || pod.zone,
+      reservoir: latest.reservoir || pod.reservoir,
+      status: terminal ? latest.lifecycle : 'active',
+      lifecycle: latest.lifecycle,
+      stageIndex,
+      timestamp: latest.timestamp,
+      evidence: latest.evidence,
+      diagnosis: latest.diagnosis,
+      action: latest.action,
+      result: latest.result,
+      confidence: latest.confidence,
+      risk: latest.risk,
+      events: ordered,
+      completedStages: stageIds,
+      latest,
+    }
+  }).sort((a, b) => {
+    const aActive = a.status === 'active' ? 0 : 1
+    const bActive = b.status === 'active' ? 0 : 1
+    if (aActive !== bActive) return aActive - bActive
+    return new Date(b.timestamp) - new Date(a.timestamp)
+  })
+}
+
+export function trendState(pod, metric = 'ph') {
+  const history = pod.history || []
+  if (history.length < 3) return 'stable'
+  const recent = history.slice(-4).map((reading) => Number(reading[metric] ?? pod[metric] ?? 0))
+  const first = recent[0]
+  const last = recent[recent.length - 1]
+  const span = Math.max(...recent) - Math.min(...recent)
+  if (span > (metric === 'ph' ? 0.32 : 220)) return 'unstable'
+  if (last - first > (metric === 'ph' ? 0.08 : 45)) return 'rising'
+  if (first - last > (metric === 'ph' ? 0.08 : 45)) return 'falling'
+  return 'stable'
 }
 
 export function summarizeFarm(pods, events = []) {
@@ -290,6 +366,7 @@ export function summarizeFarm(pods, events = []) {
 
 export function buildAnalytics(pods, events) {
   const summary = summarizeFarm(pods, events)
+  const incidents = buildIncidents(events, pods)
   const list = Object.values(pods)
   const byCrop = CROPS.map((crop) => {
     const cropPods = list.filter((pod) => pod.crop === crop)
@@ -301,9 +378,10 @@ export function buildAnalytics(pods, events) {
   return {
     healthScore: summary.healthScore,
     activeFaults: summary.activeFaults,
-    resolved: summary.resolvedToday,
-    avgRecoveryMin: events.length ? 14 + summary.activeFaults * 3 : 0,
-    successRate: events.length ? Math.min(99, Math.round((successEvents / events.length) * 100) + 20) : 96,
+    resolved: incidents.filter((incident) => incident.lifecycle === 'resolved').length,
+    incidentCount: incidents.length,
+    avgRecoveryMin: incidents.length ? 14 + summary.activeFaults * 3 : 0,
+    successRate: incidents.length ? Math.min(99, Math.round((successEvents / events.length) * 100) + 20) : 96,
     sensorReliability: Math.max(87, 98 - list.filter((pod) => pod.fault_type === 'sensor_drift').length * 4),
     byCrop,
   }

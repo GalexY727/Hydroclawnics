@@ -13,9 +13,11 @@ const STATUS_COLOR = {
   verifying: '#6cc3ff',
 }
 
-export default function PodMesh({ pod, onPodSelect, podIndex = 0 }) {
+export default function PodMesh({ pod, onPodSelect, podIndex = 0, active = false, scanning = false }) {
   const plantRef = useRef()
   const ringRef = useRef()
+  const activeRingRef = useRef()
+  const scanRef = useRef()
   const flowRef = useRef()
   const [hovered, setHovered] = useState(false)
   const isAlerted = pod.status === 'warning' || pod.status === 'critical' || pod.status === 'recovering' || pod.status === 'verifying'
@@ -56,6 +58,14 @@ export default function PodMesh({ pod, onPodSelect, podIndex = 0 }) {
       ringRef.current.rotation.z = t * (pod.status === 'critical' ? 1.4 : 0.7)
       ringRef.current.scale.setScalar(isAlerted ? 1 + Math.sin(t * 2.2) * 0.05 : 1)
     }
+    if (activeRingRef.current) {
+      activeRingRef.current.rotation.z = -t * 0.9
+      activeRingRef.current.scale.setScalar(1 + Math.sin(t * 2.8) * 0.08)
+    }
+    if (scanRef.current) {
+      scanRef.current.rotation.z = t * 2.2
+      scanRef.current.visible = scanning
+    }
     if (flowRef.current) {
       flowRef.current.position.x = ((t * 0.9 + podIndex * 0.2) % 1.6) - 0.8
       flowRef.current.visible = pod.pump_status !== false
@@ -90,6 +100,14 @@ export default function PodMesh({ pod, onPodSelect, podIndex = 0 }) {
           <ringGeometry args={[0.66, 0.72, 48]} />
           <meshBasicMaterial color={statusColor} transparent opacity={isAlerted ? 0.72 : 0.22} />
         </mesh>
+        <mesh ref={activeRingRef} visible={active} position={[0, 0.18, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[0.84, 0.91, 64]} />
+          <meshBasicMaterial color="#6cc3ff" transparent opacity={0.72} />
+        </mesh>
+        <mesh ref={scanRef} visible={scanning} position={[0, 0.2, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[0.94, 0.97, 64]} />
+          <meshBasicMaterial color="#58d68d" transparent opacity={0.55} />
+        </mesh>
         <Text
           position={[0, 0.19, 0.56]}
           rotation={[-Math.PI / 2, 0, 0]}
@@ -110,6 +128,8 @@ export default function PodMesh({ pod, onPodSelect, podIndex = 0 }) {
             <strong>{pod.pod_id}</strong>
             <span>{pod.crop} / {pod.zone}</span>
             <span>{pod.status} / {pod.lifecycle}</span>
+            <span>pH {Number(pod.ph || 0).toFixed(2)} / EC {Math.round(Number(pod.ec_ppm || 0))} ppm</span>
+            <span>{scanning ? 'AI scan in progress' : active ? 'Active incident focus' : 'Telemetry linked'}</span>
           </div>
         </Html>
       )}

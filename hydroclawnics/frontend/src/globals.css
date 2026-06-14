@@ -241,6 +241,66 @@ a:focus-visible {
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.24);
 }
 
+.pod-card-active,
+.incident-card-active,
+.active-incident-banner {
+  position: relative;
+  box-shadow: 0 0 0 1px rgba(108, 195, 255, 0.22), 0 0 32px rgba(108, 195, 255, 0.12);
+}
+
+.pod-card-active::after,
+.active-incident-banner::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  pointer-events: none;
+  border: 1px solid rgba(108, 195, 255, 0.3);
+  border-radius: inherit;
+  animation: incident-scan 2.8s ease-in-out infinite;
+}
+
+.incident-card {
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.incident-card:hover {
+  transform: translateY(-1px);
+}
+
+.zone-strip {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 9px;
+  background: rgba(8, 13, 20, 0.52);
+}
+
+.zone-strip-active {
+  border-color: rgba(108, 195, 255, 0.55);
+  box-shadow: 0 0 24px rgba(108, 195, 255, 0.14);
+}
+
+.ai-pulse {
+  box-shadow: 0 0 0 rgba(108, 195, 255, 0.36);
+  animation: ai-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes ai-pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(108, 195, 255, 0.34);
+  }
+  50% {
+    transform: scale(1.22);
+    box-shadow: 0 0 0 8px rgba(108, 195, 255, 0);
+  }
+}
+
+@keyframes incident-scan {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
 .pod-tooltip {
   display: grid;
   gap: 3px;
@@ -262,4 +322,13 @@ a:focus-visible {
 select,
 input {
   color-scheme: dark;
+}
+
+@media (max-width: 1279px) {
+  .automation-side {
+    flex: 0 0 44% !important;
+    width: 100%;
+    border-left: 0 !important;
+    border-top: 1px solid var(--color-border-strong);
+  }
 }

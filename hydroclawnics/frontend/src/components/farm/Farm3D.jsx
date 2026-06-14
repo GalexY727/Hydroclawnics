@@ -60,7 +60,7 @@ function FarmInfrastructure({ mappedPods }) {
   )
 }
 
-function Scene({ mappedPods, onPodSelect, controls, agentEvents, onAutoOrbitPodId }) {
+function Scene({ mappedPods, onPodSelect, controls, agentEvents, activePodId, scanPodId, onAutoOrbitPodId }) {
   const { orbitRef, tick, autoRotateEnabled, mode, resetToCenter } = controls
   const lastAutoOrbitMs = useRef(0)
 
@@ -104,6 +104,8 @@ function Scene({ mappedPods, onPodSelect, controls, agentEvents, onAutoOrbitPodI
           key={pod.pod_id}
           pod={pod}
           podIndex={pod.podIndex}
+          active={activePodId === pod.pod_id}
+          scanning={scanPodId === pod.pod_id}
           onPodSelect={(podId, position) => {
             controls.lastManualClickMs.current = Date.now()
             controls.selectPod(position)
@@ -125,11 +127,12 @@ function Scene({ mappedPods, onPodSelect, controls, agentEvents, onAutoOrbitPodI
   )
 }
 
-export default function Farm3D({ pods, onPodSelect, onClose, agentEvents, events = [], isAutomationTab, autoTrackingPodId, onAutoOrbitPodId }) {
+export default function Farm3D({ pods, onPodSelect, onClose, agentEvents, events = [], activeIncident, scanPodId, isAutomationTab, autoTrackingPodId, onAutoOrbitPodId }) {
   const mappedPods = useFarm3D(pods)
   const controls = useCameraControls()
   const activeFaults = mappedPods.filter((pod) => pod.status === 'critical' || pod.status === 'warning')
-  const latestEvent = events[0]
+  const latestEvent = activeIncident?.latest || events[0]
+  const activePodId = activeIncident?.podId || autoTrackingPodId
 
   return (
     <div className="relative h-full overflow-hidden rounded-md border" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg)' }}>
@@ -139,6 +142,8 @@ export default function Farm3D({ pods, onPodSelect, onClose, agentEvents, events
           onPodSelect={onPodSelect}
           controls={controls}
           agentEvents={agentEvents}
+          activePodId={activePodId}
+          scanPodId={scanPodId}
           onAutoOrbitPodId={onAutoOrbitPodId}
         />
       </Canvas>
@@ -151,6 +156,7 @@ export default function Farm3D({ pods, onPodSelect, onClose, agentEvents, events
             {mappedPods.length} pods mapped. {activeFaults.length} active spatial alerts.
           </div>
           {latestEvent && <div className="mt-2 text-xs" style={{ color: 'var(--color-info)' }}>{latestEvent.podId}: {latestEvent.lifecycle}</div>}
+          {scanPodId && <div className="mt-1 text-xs" style={{ color: 'var(--color-success)' }}>AI scan target: {scanPodId}</div>}
         </div>
       </div>
 

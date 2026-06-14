@@ -46,12 +46,18 @@ function TrendChart({ title, data, dataKey, stroke, unit }) {
   return (
     <div className="rounded-md border p-3" style={{ borderColor: 'var(--color-border)', background: 'rgba(8, 13, 20, 0.58)' }}>
       <div className="mb-2 text-xs font-semibold">{title}</div>
-      <div className="h-32">
+      <div className="h-32 overflow-hidden">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: -12 }}>
+          <LineChart data={data} margin={{ top: 8, right: 10, bottom: 4, left: 0 }}>
             <CartesianGrid stroke="rgba(148, 163, 184, 0.1)" vertical={false} />
             <XAxis dataKey="index" hide />
-            <YAxis tick={{ fill: 'var(--color-muted)', fontSize: 10 }} axisLine={false} tickLine={false} />
+            <YAxis
+              width={42}
+              tick={{ fill: 'var(--color-muted)', fontSize: 9 }}
+              tickFormatter={(value) => Number(value).toLocaleString([], { notation: Number(value) > 9999 ? 'compact' : 'standard' })}
+              axisLine={false}
+              tickLine={false}
+            />
             <Tooltip
               formatter={(value) => [`${value}${unit}`, title]}
               contentStyle={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 6, color: 'var(--color-text)' }}
@@ -61,6 +67,30 @@ function TrendChart({ title, data, dataKey, stroke, unit }) {
         </ResponsiveContainer>
       </div>
     </div>
+  )
+}
+
+function IncidentEvidence({ podEvents }) {
+  const incidentEvents = podEvents.filter((event) => event.eventType === 'intervention' || event.incidentId)
+  if (!incidentEvents.length) return null
+  const first = incidentEvents[incidentEvents.length - 1]
+  const latest = incidentEvents[0]
+  return (
+    <section className="rounded-md border p-4" style={{ borderColor: 'var(--color-border)', background: 'rgba(8, 13, 20, 0.58)' }}>
+      <h3 className="text-sm font-semibold">Incident Evidence</h3>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <div className="rounded-md border p-3" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
+          <div className="text-xs uppercase" style={{ color: 'var(--color-muted)' }}>Before</div>
+          <div className="mt-2 text-sm">{first.evidence}</div>
+          <div className="mt-1 text-xs" style={{ color: 'var(--color-muted)' }}>{first.lifecycle}</div>
+        </div>
+        <div className="rounded-md border p-3" style={{ borderColor: 'var(--color-info)', background: 'rgba(108, 195, 255, 0.1)' }}>
+          <div className="text-xs uppercase" style={{ color: 'var(--color-info)' }}>Now</div>
+          <div className="mt-2 text-sm">{latest.result}</div>
+          <div className="mt-1 text-xs" style={{ color: 'var(--color-muted)' }}>{latest.lifecycle}</div>
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -197,6 +227,7 @@ export default function PodDetailModal({ pod, events = [], agentLog = [], onManu
                     : podAgentEntries[0]?.reasoning || 'The pod is stable. The agent is preserving an audit trail and watching for trend deviation before recommending changes.'}
                 </p>
               </section>
+              <IncidentEvidence podEvents={podEvents} />
             </div>
 
             <aside className="space-y-4">

@@ -11,20 +11,20 @@ function Field({ label, children }) {
   )
 }
 
-function EventRow({ event }) {
+function IncidentRow({ incident }) {
   return (
     <article className="rounded-md border p-3" style={{ borderColor: 'var(--color-border)', background: 'rgba(8, 13, 20, 0.58)' }}>
       <div className="flex items-center justify-between gap-2">
-        <span className={`severity-chip severity-${event.severity}`}>{event.severity}</span>
-        <span className="text-[11px]" style={{ color: 'var(--color-muted)' }}>{event.lifecycle}</span>
+        <span className={`severity-chip severity-${incident.severity}`}>{incident.severity}</span>
+        <span className="text-[11px]" style={{ color: 'var(--color-muted)' }}>{incident.lifecycle}</span>
       </div>
-      <div className="mt-2 text-sm font-semibold">{event.action}</div>
-      <p className="mt-1 text-xs leading-5" style={{ color: 'var(--color-muted)' }}>{event.podId} / {event.result}</p>
+      <div className="mt-2 text-sm font-semibold">{incident.title}</div>
+      <p className="mt-1 text-xs leading-5" style={{ color: 'var(--color-muted)' }}>{incident.podId} / {incident.action} / {incident.result}</p>
     </article>
   )
 }
 
-export default function AgentActivityFeed({ connectionStatus, events, policy, setPolicy, onSimulateFault, simulationMessage }) {
+export default function AgentActivityFeed({ connectionStatus, events, incidents = [], activeIncident, agentStatus, policy, setPolicy, onSimulateFault, simulationMessage }) {
   const set = (key, value) => setPolicy((current) => ({ ...current, [key]: value }))
   const setAllowed = (faultId) => setPolicy((current) => ({
     ...current,
@@ -46,6 +46,24 @@ export default function AgentActivityFeed({ connectionStatus, events, policy, se
       </div>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+        <section className="app-panel rounded-md p-4">
+          <h2 className="text-base font-semibold">Live Agent State</h2>
+          <div className="mt-3 h-2 overflow-hidden rounded-full" style={{ background: 'var(--color-surface-2)' }}>
+            <div className="h-full rounded-full" style={{ width: `${agentStatus.cycleProgress}%`, background: 'linear-gradient(90deg, var(--color-info), var(--color-success))' }} />
+          </div>
+          <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2" style={{ color: 'var(--color-muted)' }}>
+            <span>Scanning <strong style={{ color: 'var(--color-text)' }}>{agentStatus.scanningPodId}</strong></span>
+            <span>Zone <strong style={{ color: 'var(--color-text)' }}>{agentStatus.scanningZone}</strong></span>
+            <span>Policy <strong style={{ color: 'var(--color-text)' }}>{agentStatus.activePolicy}</strong></span>
+            <span>Pending verification <strong style={{ color: 'var(--color-text)' }}>{agentStatus.pendingVerification}</strong></span>
+          </div>
+          {activeIncident && (
+            <div className="mt-3 rounded-md border p-3 text-xs" style={{ borderColor: 'var(--color-info)', background: 'rgba(108, 195, 255, 0.1)', color: 'var(--color-muted)' }}>
+              Active incident: <strong style={{ color: 'var(--color-text)' }}>{activeIncident.podId}</strong> / {activeIncident.lifecycle} / {activeIncident.action}
+            </div>
+          )}
+        </section>
+
         <section className="app-panel rounded-md p-4">
           <h2 className="text-base font-semibold">Agent Mode</h2>
           <div className="mt-3 grid grid-cols-2 gap-2">
@@ -148,9 +166,14 @@ export default function AgentActivityFeed({ connectionStatus, events, policy, se
         </section>
 
         <section className="app-panel rounded-md p-4">
-          <h2 className="text-base font-semibold">Recent Automation Outcomes</h2>
+          <h2 className="text-base font-semibold">Recent Incident Outcomes</h2>
           <div className="mt-3 space-y-2">
-            {events.slice(0, 8).map((event) => <EventRow key={event.id} event={event} />)}
+            {incidents.slice(0, 8).map((incident) => <IncidentRow key={incident.id} incident={incident} />)}
+            {incidents.length === 0 && events.slice(0, 3).map((event) => (
+              <div key={event.id} className="rounded-md border p-3 text-xs" style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted)' }}>
+                {event.issue} / {event.result}
+              </div>
+            ))}
           </div>
         </section>
       </div>

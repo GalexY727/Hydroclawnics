@@ -14,14 +14,16 @@ import {
   advanceFaultPod,
   applyFaultToPod,
   buildAnalytics,
+  buildIncidents,
   buildMockPods,
   buildSeedEvents,
   makeEvent,
+  makeIncidentId,
   mergeLivePods,
   summarizeFarm,
 } from '../data/operations'
 
-function HistoryEventsPage({ events, pods }) {
+function HistoryEventsPage({ events, pods, incidents, onIncidentSelect }) {
   const [severity, setSeverity] = useState('all')
   const [query, setQuery] = useState('')
   const filtered = useMemo(() => events.filter((event) => {
@@ -59,6 +61,26 @@ function HistoryEventsPage({ events, pods }) {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto rounded-md border" style={{ borderColor: 'var(--color-border)' }}>
+        {incidents.length > 0 && (
+          <div className="grid gap-3 border-b p-4 lg:grid-cols-2" style={{ borderColor: 'var(--color-border)', background: 'rgba(8, 13, 20, 0.7)' }}>
+            {incidents.slice(0, 4).map((incident) => (
+              <button
+                key={incident.id}
+                type="button"
+                onClick={() => onIncidentSelect?.(incident)}
+                className="rounded-md border p-3 text-left"
+                style={{ borderColor: incident.status === 'active' ? 'var(--color-info)' : 'var(--color-border)', background: 'var(--color-surface)' }}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className={`severity-chip severity-${incident.severity}`}>{incident.severity}</span>
+                  <span className="text-xs" style={{ color: 'var(--color-muted)' }}>{incident.lifecycle}</span>
+                </div>
+                <div className="mt-2 text-sm font-semibold">{incident.title}</div>
+                <div className="mt-1 text-xs" style={{ color: 'var(--color-muted)' }}>{incident.podId} / {incident.zone} / {incident.reservoir}</div>
+              </button>
+            ))}
+          </div>
+        )}
         {filtered.map((event) => {
           const pod = pods[event.podId]
           return (
@@ -90,7 +112,7 @@ function HistoryEventsPage({ events, pods }) {
   )
 }
 
-function AnalyticsPage({ pods, events }) {
+function AnalyticsPage({ pods, events, incidents }) {
   const computed = useMemo(() => buildAnalytics(pods, events), [events, pods])
 
   return (
@@ -102,7 +124,8 @@ function AnalyticsPage({ pods, events }) {
             {[
               ['Farm health', `${computed.healthScore}%`],
               ['Active faults', computed.activeFaults],
-              ['Resolved today', computed.resolved],
+              ['Incidents', computed.incidentCount],
+              ['Resolved', computed.resolved],
               ['Avg recovery', `${computed.avgRecoveryMin} min`],
               ['Success rate', `${computed.successRate}%`],
               ['Sensor reliability', `${computed.sensorReliability}%`],
@@ -118,7 +141,11 @@ function AnalyticsPage({ pods, events }) {
         <section className="app-panel rounded-md p-4">
           <h2 className="text-base font-semibold">Recurring Patterns</h2>
           <div className="mt-4 space-y-3">
-            {['pH drift clusters in tomato reservoir R-01', 'Humidity lows repeat after afternoon venting', 'Sensor drift risk highest on East Rack'].map((item, index) => (
+            {[
+              `${incidents.filter((incident) => incident.status === 'active').length} incident(s) currently active`,
+              'pH drift clusters in tomato reservoir R-01',
+              'Humidity lows repeat after afternoon venting',
+            ].map((item, index) => (
               <div key={item} className="flex items-center gap-3 rounded-md border p-3" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
                 <span className="grid h-8 w-8 place-items-center rounded-md font-mono text-sm" style={{ background: 'var(--color-surface-2)', color: 'var(--color-info)' }}>{index + 1}</span>
                 <span className="text-sm" style={{ color: 'var(--color-muted)' }}>{item}</span>
@@ -157,6 +184,8 @@ export default function App() {
   const [policy, setPolicy] = useState(POLICY_DEFAULTS)
   const [events, setEvents] = useState(() => buildSeedEvents(buildMockPods()))
   const [simulationMessage, setSimulationMessage] = useState('Ready')
+  const [activeIncidentId, setActiveIncidentId] = useState(null)
+  const [agentTick, setAgentTick] = useState(0)
   const timersRef = useRef([])
 
   useEffect(() => {
@@ -167,13 +196,45 @@ export default function App() {
     timersRef.current.forEach((timer) => window.clearTimeout(timer))
   }, [])
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setAgentTick((value) => value + 1), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
+
   const podList = useMemo(() => Object.values(pods), [pods])
 
   const farmSummary = useMemo(() => summarizeFarm(pods, events), [events, pods])
   const healthSummary = farmSummary.counts
+  const incidents = useMemo(() => buildIncidents(events, pods), [events, pods])
+  const activeIncident = useMemo(
+    () => incidents.find((incident) => incident.id === activeIncidentId) || incidents.find((incident) => incident.status === 'active') || incidents[0] || null,
+    [activeIncidentId, incidents],
+  )
+  const agentStatus = useMemo(() => {
+    const list = podList.length ? podList : []
+    const index = list.length ? agentTick % list.length : 0
+    const scanningPod = list[index] || null
+    const pendingVerification = incidents.filter((incident) => incident.lifecycle === 'verifying').length
+    return {
+      scanningPodId: scanningPod?.id || null,
+      scanningZone: scanningPod?.zone || 'No zone',
+      cycleProgress: list.length ? Math.round(((index + 1) / list.length) * 100) : 0,
+      nextCheckSeconds: 12 - (agentTick % 12),
+      pendingVerification,
+      activePolicy: policy.requireApproval ? 'Human approval for severe actions' : 'Autonomous within limits',
+      lastResult: incidents[0]?.result || 'No interventions in current cycle',
+    }
+  }, [agentTick, incidents, podList, policy.requireApproval])
 
   const handleAutoOrbitPodId = useCallback((podId) => {
     setAutoTrackingPodId(podId)
+  }, [])
+
+  const handleIncidentSelect = useCallback((incident) => {
+    if (!incident) return
+    setActiveIncidentId(incident.id)
+    setDetailPodId(incident.podId)
+    setAutoTrackingPodId(incident.podId)
   }, [])
 
   const injectFault = useCallback((faultId, podId) => {
@@ -182,9 +243,12 @@ export default function App() {
     const target = pods[podId] || candidates[Math.floor(Math.random() * candidates.length)] || podList[0]
     if (!target) return
 
+    const incidentId = makeIncidentId(target, fault)
     const detectedPod = applyFaultToPod(target, fault, 'detected')
     setPods((current) => ({ ...current, [target.id]: detectedPod }))
-    setEvents((current) => [makeEvent({ pod: detectedPod, fault, lifecycle: 'detected' }), ...current].slice(0, 120))
+    setEvents((current) => [makeEvent({ pod: detectedPod, fault, lifecycle: 'detected', incidentId }), ...current].slice(0, 120))
+    setActiveIncidentId(incidentId)
+    setAutoTrackingPodId(target.id)
     setDetailPodId(target.id)
     setSimulationMessage(`${fault.label} injected on ${target.id}`)
 
@@ -200,6 +264,7 @@ export default function App() {
             pod: nextPod,
             fault,
             lifecycle: step,
+            incidentId,
             action: step === 'diagnosing' ? 'Cross-checking reservoir and sensor trend' : fault.action,
             result: step === 'resolved' ? 'Verified back inside target range' : 'Lifecycle progressing',
           })
@@ -220,7 +285,7 @@ export default function App() {
   const farmStyle = isFarmTab
     ? { flex: 1, minHeight: 0, padding: 16 }
     : isAutomationTab
-      ? { width: '58%', flexShrink: 0, minHeight: 0, padding: 16 }
+      ? { flex: '1 1 58%', minHeight: 0, padding: 16 }
       : { position: 'fixed', left: -9999, top: 0, width: 1, height: 1, overflow: 'hidden', pointerEvents: 'none' }
 
   return (
@@ -235,7 +300,7 @@ export default function App() {
         onDrawerToggle={() => setDrawerOpen(o => !o)}
       />
 
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden max-xl:flex-col">
         {/* Farm3D — always mounted, CSS-positioned per tab */}
         <div style={farmStyle}>
           <Farm3D
@@ -244,6 +309,8 @@ export default function App() {
             onClose={() => setTab('overview')}
             agentEvents={podAgentUpdates}
             events={events}
+            activeIncident={activeIncident}
+            scanPodId={agentStatus.scanningPodId}
             isAutomationTab={isAutomationTab}
             autoTrackingPodId={autoTrackingPodId}
             onAutoOrbitPodId={handleAutoOrbitPodId}
@@ -264,17 +331,21 @@ export default function App() {
                   onSimulateFault={injectFault}
                   simulationMessage={simulationMessage}
                   policy={policy}
+                  incidents={incidents}
+                  activeIncident={activeIncident}
+                  agentStatus={agentStatus}
+                  onIncidentSelect={handleIncidentSelect}
                 />
               </div>
             )}
             {tab === 'history' && (
               <div key="history" className="tab-enter h-full">
-                <HistoryEventsPage events={events} pods={pods} />
+                <HistoryEventsPage events={events} pods={pods} incidents={incidents} onIncidentSelect={handleIncidentSelect} />
               </div>
             )}
             {tab === 'analytics' && (
               <div key="analytics" className="tab-enter h-full">
-                <AnalyticsPage pods={pods} events={events} />
+                <AnalyticsPage pods={pods} events={events} incidents={incidents} />
               </div>
             )}
             {tab === 'settings' && (
@@ -288,14 +359,17 @@ export default function App() {
         {/* Automation right panel (40%) */}
         {isAutomationTab && (
           <div
-            className="shrink-0 overflow-y-auto p-4"
-            style={{ width: '42%', minHeight: 0, borderLeft: '1px solid var(--color-border-strong)', background: 'var(--color-panel)' }}
+            className="automation-side shrink-0 overflow-y-auto p-4"
+            style={{ flex: '0 0 42%', minHeight: 0, borderLeft: '1px solid var(--color-border-strong)', background: 'var(--color-panel)' }}
           >
             <AgentActivityFeed
               agentCycles={agentCycles}
               connectionStatus={connectionStatus}
               pods={pods}
               events={events}
+              incidents={incidents}
+              activeIncident={activeIncident}
+              agentStatus={agentStatus}
               policy={policy}
               setPolicy={setPolicy}
               onSimulateFault={injectFault}
@@ -310,7 +384,16 @@ export default function App() {
             className="drawer-open hidden shrink-0 border-l p-4 lg:block"
             style={{ width: 340, borderColor: 'var(--color-border-strong)', background: 'var(--color-panel)' }}
           >
-            <AgentLog entries={agentLog} events={events} connectionStatus={connectionStatus} pods={pods} />
+            <AgentLog
+              entries={agentLog}
+              events={events}
+              incidents={incidents}
+              activeIncident={activeIncident}
+              agentStatus={agentStatus}
+              connectionStatus={connectionStatus}
+              pods={pods}
+              onIncidentSelect={handleIncidentSelect}
+            />
           </aside>
         )}
       </div>
