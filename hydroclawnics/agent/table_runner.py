@@ -7,14 +7,16 @@ import logging
 import re
 import time
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 from uuid import uuid4
-
-from openai import AsyncOpenAI
 
 from . import action_log as alog
 from . import message_bus, sensor_poller, sim_bridge
 from .llm_client import LLMConfig, build_async_client, load_llm_config
 from .tool_registry import as_openai_tools, execute_tool
+
+if TYPE_CHECKING:
+    from openai import AsyncOpenAI
 
 logging.basicConfig(
     level=logging.INFO,

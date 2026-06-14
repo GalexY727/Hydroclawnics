@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -118,6 +119,28 @@ def safe_json_serialize(obj: Any) -> dict:
     except Exception:
         logger.warning("Failed to serialize websocket payload", exc_info=True)
         return fallback
+
+
+async def tail_decisions(broadcast_fn) -> None:  # type: ignore[no-untyped-def]
+    offset = 0
+    while True:
+        try:
+            if DECISIONS_FILE.exists():
+                with DECISIONS_FILE.open("r", encoding="utf-8") as fp:
+                    fp.seek(offset)
+                    for line in fp:
+                        stripped = line.strip()
+                        if not stripped:
+                            continue
+                        try:
+                            entry = json.loads(stripped)
+                        except json.JSONDecodeError:
+                            continue
+                        await broadcast_fn(entry)
+                    offset = fp.tell()
+        except FileNotFoundError:
+            pass
+        await asyncio.sleep(1)
 
 
 def _zero_value(key: str):
