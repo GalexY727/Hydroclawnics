@@ -1,0 +1,17 @@
+services:
+  hydroclawnics:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - LLM_PROVIDER=${LLM_PROVIDER:-none}
+      - LLM_BASE_URL
+      - LLM_API_KEY
+      - NVIDIA_API_KEY
+      - TABLE_AGENT_MODEL
+      - SUPERVISOR_MODEL
+      - DEMO_MODE=${DEMO_MODE:-true}
+      - DEMO_AUTOSTART_AGENTS=${DEMO_AUTOSTART_AGENTS:-true}
+      - TABLE_INTERVAL_S=${TABLE_INTERVAL_S:-20}
+      - SUPERVISOR_INTERVAL_S=${SUPERVISOR_INTERVAL_S:-60}
+      - BACKEND_URL=http://localhost:8000

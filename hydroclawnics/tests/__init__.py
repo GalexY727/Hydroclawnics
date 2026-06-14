@@ -1,0 +1,1 @@
+"""Hydroclawnics smoke tests."""

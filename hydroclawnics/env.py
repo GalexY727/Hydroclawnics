@@ -18,7 +18,8 @@ def _read_env_file(path: Path) -> None:
             os.environ[key] = value
 
 
-package_dir = Path(__file__).resolve().parent.parent
-repo_dir = package_dir.parent
-_read_env_file(repo_dir / ".env")
-_read_env_file(package_dir / ".env")
+def load_env_files() -> None:
+    package_dir = Path(__file__).resolve().parent
+    repo_dir = package_dir.parent
+    _read_env_file(repo_dir / ".env")
+    _read_env_file(package_dir / ".env")

@@ -9,7 +9,10 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Awaitable, Callable
 
-import state
+try:
+    from hydroclawnics import state
+except ModuleNotFoundError:
+    import state
 
 try:
     from hydroclawnics.sim_config import CROP_ORDER, POD_COUNT

@@ -3,13 +3,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import re
 
 from openai import AsyncOpenAI
 
 from . import action_log as alog
 from . import message_bus, sensor_poller
+from .llm_client import LLMConfig, build_async_client, load_llm_config
 from .table_runner import CROP_MAP
 
 logging.basicConfig(
@@ -27,18 +27,14 @@ _SUPERVISOR_SYSTEM_PROMPT = (
     "nutrient batch issues, light spectrum problems), and issue high-level directives when "
     "local table agents cannot resolve an issue or when farm-wide coordination is needed. "
     "Directives must be crop-aware — name the crop and the target range when relevant. "
-    "Prioritize critical zones. Reason step by step. "
+    "Prioritize critical zones. Keep reasoning concise and operational. "
     "Never contradict a table agent's active emergency response without justification."
 )
-
-_SUPERVISOR_MODEL = os.getenv("SUPERVISOR_MODEL", "nvidia/nemotron-3-super-120b-a12b")
-_SUPERVISOR_INTERVAL_S = int(os.getenv("SUPERVISOR_INTERVAL_S", "60"))
-_NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
 _RESPONSE_SCHEMA_DOC = """\
 Respond ONLY with a JSON object in this exact shape:
 {
-  "reasoning": "<step-by-step analysis>",
+  "reasoning": "<concise operational explanation>",
   "farm_health_summary": "<one-sentence summary>",
   "directives": [
     {
@@ -94,17 +90,67 @@ def _extract_json(raw: str) -> str:
     return raw.strip()
 
 
-def _get_reasoning_content(message) -> str:  # type: ignore[no-untyped-def]
-    rc = getattr(message, "reasoning_content", None)
-    if rc is None:
-        try:
-            rc = message.model_extra.get("reasoning_content")
-        except AttributeError:
-            pass
-    return rc or ""
+def _deterministic_supervisor_decision(
+    readings: dict[str, sensor_poller.SensorReading],
+    reports: dict[str, dict],
+) -> dict:
+    critical_tables = [tid for tid, reading in readings.items() if reading.critical_count > 0]
+    warning_tables = [tid for tid, reading in readings.items() if reading.warning_count > 0]
+    total_critical = sum(reading.critical_count for reading in readings.values())
+    total_warning = sum(reading.warning_count for reading in readings.values())
+
+    if total_critical:
+        farm_summary = (
+            f"{total_critical} critical pod(s) and {total_warning} warning pod(s) require attention "
+            f"across {len(readings)} table(s)."
+        )
+    elif total_warning:
+        farm_summary = (
+            f"{total_warning} warning pod(s) are drifting outside crop targets; table agents are correcting locally."
+        )
+    else:
+        farm_summary = f"All {len(readings)} table(s) are within operating range."
+
+    directives: list[dict] = []
+    for tid in sorted(critical_tables):
+        reading = readings[tid]
+        crop = CROP_MAP.get(tid, "unknown")
+        fault_text = ", ".join(reading.fault_types) or "critical sensor drift"
+        previous_actions = len((reports.get(tid) or {}).get("actions_taken", []))
+        action = (
+            f"Prioritize {crop} table {tid}: verify corrective actions for {fault_text} "
+            "and keep responding until pods return to target range."
+        )
+        if previous_actions:
+            action += f" Last table report recorded {previous_actions} action(s)."
+        directives.append({
+            "table_id": tid,
+            "action": action,
+            "reasoning": f"{reading.critical_count} critical {crop} pod(s) need coordinated follow-up.",
+            "priority": "critical",
+        })
+
+    if not directives and len(warning_tables) >= 2:
+        tables = ", ".join(sorted(warning_tables))
+        directives.append({
+            "table_id": sorted(warning_tables)[0],
+            "action": f"Monitor shared environment across warning tables {tables}; check HVAC and nutrient batch consistency.",
+            "reasoning": "Multiple tables are warning at once, which may indicate a farm-wide drift.",
+            "priority": "normal",
+        })
+
+    return {
+        "reasoning": farm_summary,
+        "farm_health_summary": farm_summary,
+        "directives": directives,
+    }
 
 
-async def _run_cycle(client: AsyncOpenAI) -> None:
+async def _run_cycle(
+    client: AsyncOpenAI | None = None,
+    config: LLMConfig | None = None,
+) -> None:
+    config = config or load_llm_config()
     readings = sensor_poller.read_all()
     if not readings:
         logger.warning("No sensor readings — skipping supervisor cycle")
@@ -114,59 +160,61 @@ async def _run_cycle(client: AsyncOpenAI) -> None:
     prompt = _build_prompt(readings, reports)
     logger.info("Supervisor cycle: %d table(s) visible", len(readings))
 
-    response = await client.chat.completions.create(
-        model=_SUPERVISOR_MODEL,
-        messages=[
-            {"role": "system", "content": _SUPERVISOR_SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
-        ],
-        temperature=1.0,
-        top_p=0.95,
-        max_tokens=2048,
-        extra_body={
-            "chat_template_kwargs": {"enable_thinking": True},
-            "reasoning_budget": 4096,
-        },
-    )
-
-    msg = response.choices[0].message
-    raw = msg.content or ""
-    reasoning_content = _get_reasoning_content(msg)
-
-    try:
-        parsed = json.loads(_extract_json(raw))
-    except json.JSONDecodeError:
-        logger.warning("Supervisor non-JSON on first attempt, retrying with json_object format")
-        retry = await client.chat.completions.create(
-            model=_SUPERVISOR_MODEL,
-            messages=[
-                {"role": "system", "content": _SUPERVISOR_SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-                {"role": "assistant", "content": raw},
-                {
-                    "role": "user",
-                    "content": (
-                        "Your response above was not valid JSON. "
-                        "Reply ONLY with the JSON object — no prose, no markdown fences."
-                    ),
-                },
-            ],
-            temperature=0.3,
-            max_tokens=1024,
-        )
-        raw = retry.choices[0].message.content or ""
+    if client is None:
+        logger.info("Using deterministic supervisor policy (LLM_PROVIDER=%s)", config.provider)
+        parsed = _deterministic_supervisor_decision(readings, reports)
+    else:
         try:
+            response = await client.chat.completions.create(
+                model=config.model_for("supervisor"),
+                messages=[
+                    {"role": "system", "content": _SUPERVISOR_SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.7,
+                top_p=0.95,
+                max_tokens=2048,
+                **config.request_options(),
+            )
+            raw = response.choices[0].message.content or ""
             parsed = json.loads(_extract_json(raw))
         except json.JSONDecodeError:
-            logger.error("Supervisor returned non-JSON response: %s", raw[:200])
-            alog.log("supervisor", None, "parse_error", {}, {"raw": raw[:500]}, reasoning_content)
-            return
+            logger.warning("Supervisor non-JSON on first attempt, retrying with JSON-only instruction")
+            retry = await client.chat.completions.create(
+                model=config.model_for("supervisor"),
+                messages=[
+                    {"role": "system", "content": _SUPERVISOR_SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                    {"role": "assistant", "content": raw},
+                    {
+                        "role": "user",
+                        "content": (
+                            "Your response above was not valid JSON. "
+                            "Reply ONLY with the JSON object — no prose, no markdown fences."
+                        ),
+                    },
+                ],
+                temperature=0.3,
+                max_tokens=1024,
+                **config.request_options(),
+            )
+            raw = retry.choices[0].message.content or ""
+            try:
+                parsed = json.loads(_extract_json(raw))
+            except json.JSONDecodeError:
+                logger.error("Supervisor returned non-JSON twice; using deterministic fallback: %s", raw[:200])
+                parsed = _deterministic_supervisor_decision(readings, reports)
+        except Exception:
+            logger.exception("Supervisor LLM call failed; using deterministic fallback")
+            parsed = _deterministic_supervisor_decision(readings, reports)
 
     reasoning = parsed.get("reasoning", "")
     directives = parsed.get("directives", [])
+    if not isinstance(directives, list):
+        directives = []
     farm_summary = parsed.get("farm_health_summary", "")
 
-    thought_text = reasoning_content or reasoning
+    thought_text = reasoning
     if thought_text:
         asyncio.create_task(alog.broadcast_thought(thought_text, source="supervisor"))
 
@@ -195,26 +243,23 @@ async def _run_cycle(client: AsyncOpenAI) -> None:
 
 
 async def main() -> None:
-    api_key = os.getenv("NVIDIA_API_KEY")
-    if not api_key:
-        raise EnvironmentError(
-            "NVIDIA_API_KEY is required. Set it in your environment or .env file."
-        )
-
+    config = load_llm_config()
     message_bus.init_db()
-    client = AsyncOpenAI(base_url=_NVIDIA_BASE_URL, api_key=api_key)
+    client = build_async_client(config)
     logger.info(
-        "Supervisor ready (model=%s, interval=%ds)",
-        _SUPERVISOR_MODEL,
-        _SUPERVISOR_INTERVAL_S,
+        "Supervisor ready (provider=%s, model=%s, interval=%ds, demo_mode=%s)",
+        config.provider,
+        config.model_for("supervisor"),
+        config.supervisor_interval_s,
+        config.demo_mode,
     )
 
     while True:
         try:
-            await _run_cycle(client)
+            await _run_cycle(client, config)
         except Exception:
             logger.exception("Supervisor cycle error — will retry")
-        await asyncio.sleep(_SUPERVISOR_INTERVAL_S)
+        await asyncio.sleep(config.supervisor_interval_s)
 
 
 if __name__ == "__main__":
