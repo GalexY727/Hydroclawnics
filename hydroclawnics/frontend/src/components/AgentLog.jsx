@@ -1,95 +1,85 @@
-import { useState } from 'react'
-import CropIcon from './CropIcon'
-
-const REASONING_PREVIEW_CHARS = 150
-
-function colorForAction(action = '') {
-  const normalized = action.toLowerCase()
-  if (normalized.includes('dose_ph_up') || normalized.includes('dose_ph_down')) return 'var(--color-info)'
-  if (normalized.includes('nutrient')) return 'var(--color-warning)'
-  if (normalized.includes('heat')) return 'var(--color-critical)'
-  if (normalized.includes('alert')) return 'var(--color-neutral)'
-  return 'var(--color-muted)'
-}
-
 function formatTime(timestamp) {
   const date = timestamp ? new Date(timestamp) : new Date()
-  if (Number.isNaN(date.getTime())) return `${timestamp || ''}`.slice(0, 8) || '--:--'
+  if (Number.isNaN(date.getTime())) return '--:--'
   return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
 
-const STATUS_DOT_COLOR = { healthy: 'var(--color-success)', warning: 'var(--color-warning)', critical: 'var(--color-critical)' }
+function EventItem({ event, compact = false }) {
+  return (
+    <article className="rounded-md border p-3" style={{ borderColor: 'var(--color-border)', background: 'rgba(8, 13, 20, 0.58)' }}>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className={`severity-chip severity-${event.severity}`}>{event.severity}</span>
+        <span className="text-[11px]" style={{ color: 'var(--color-muted)' }}>{formatTime(event.timestamp)}</span>
+      </div>
+      <div className="text-sm font-semibold">{event.issue}</div>
+      <div className="mt-1 text-xs" style={{ color: 'var(--color-muted)' }}>{event.podId} / {event.zone}</div>
+      {!compact && (
+        <p className="mt-2 text-xs leading-5" style={{ color: 'var(--color-muted)' }}>
+          Evidence: {event.evidence}. Action: {event.action}. Result: {event.result}.
+        </p>
+      )}
+      <div className="mt-2 flex items-center justify-between text-[11px]" style={{ color: 'var(--color-muted)' }}>
+        <span>{event.lifecycle}</span>
+        <span>{event.confidence}% confidence</span>
+      </div>
+    </article>
+  )
+}
 
-export default function AgentLog({ entries, pods = {} }) {
-  const [expanded, setExpanded] = useState({})
+export default function AgentLog({ entries = [], events = [], pods = {} }) {
+  const active = events.filter((event) => ['critical', 'warning'].includes(event.severity) && event.lifecycle !== 'resolved').slice(0, 4)
+  const recent = events.filter((event) => event.eventType === 'intervention').slice(0, 4)
+  const summaries = events.filter((event) => event.eventType === 'summary' || event.lifecycle === 'stable').slice(0, 3)
+  const audit = events.slice(0, 16)
+  const stableCount = Object.values(pods).filter((pod) => pod.status === 'healthy').length
+  const activeCount = Object.values(pods).length - stableCount
 
   return (
-    <section className="flex h-full min-h-0 flex-col rounded-lg border p-4" style={{ borderColor: 'var(--color-border-strong)', background: 'var(--color-surface)' }}>
-      <h2 className="mb-4 shrink-0 text-base font-semibold" style={{ color: 'var(--color-text)' }}>
-        Agent Reasoning Feed
-      </h2>
+    <section className="flex h-full min-h-0 flex-col rounded-md border p-4" style={{ borderColor: 'var(--color-border-strong)', background: 'var(--color-surface)' }}>
+      <div className="mb-4 shrink-0">
+        <h2 className="text-base font-semibold">Operations Feed</h2>
+        <p className="mt-1 text-xs" style={{ color: 'var(--color-muted)' }}>
+          {Object.values(pods).length} pods scanned. {stableCount} stable. {activeCount} need attention.
+        </p>
+      </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-        {entries.length === 0 ? (
-          <div className="flex min-h-64 items-center justify-center text-center text-sm italic" style={{ color: 'var(--color-muted)' }}>
-            Waiting for agent decisions...
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+        <section>
+          <h3 className="mb-2 text-xs font-semibold uppercase" style={{ color: 'var(--color-muted)' }}>Now</h3>
+          <div className="space-y-2">
+            {active.length ? active.map((event) => <EventItem key={event.id} event={event} compact />) : (
+              <div className="rounded-md border p-3 text-sm" style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted)' }}>
+                No active faults. Agent is monitoring drift and verification windows.
+              </div>
+            )}
           </div>
-        ) : (
-          entries.map((entry, idx) => {
-            const key = `${entry.timestamp}-${entry.pod_id}-${idx}`
-            const reasoning = `${entry.reasoning || ''}`
-            const isExpanded = Boolean(expanded[key])
-            const shouldTruncate = reasoning.length > REASONING_PREVIEW_CHARS
-            const visibleReasoning = isExpanded || !shouldTruncate ? reasoning : `${reasoning.slice(0, REASONING_PREVIEW_CHARS)}`
-            const crop = (entry.pod_id ? pods[entry.pod_id]?.crop : null) ?? entry.crop ?? null
+        </section>
 
-            return (
-              <article key={key} className="log-entry border-b py-4 first:pt-0 last:border-b-0" style={{ borderColor: 'var(--color-border)' }}>
-                <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                  {(() => {
-                    const podStatus = (entry.pod_id ? pods[entry.pod_id]?.status : null) ?? entry.status ?? null
-                    return podStatus ? (
-                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: STATUS_DOT_COLOR[podStatus] || STATUS_DOT_COLOR.healthy }} />
-                    ) : null
-                  })()}
-                  <span className="text-sm" style={{ color: 'var(--color-muted)' }}>
-                    {formatTime(entry.timestamp)}
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: 'var(--color-surface-2)', color: 'var(--color-muted)' }}>
-                    {crop ? <CropIcon crop={crop} className="h-3.5 w-3.5" /> : null}
-                    {entry.pod_id || 'pod'}
-                  </span>
-                </div>
+        <section>
+          <h3 className="mb-2 text-xs font-semibold uppercase" style={{ color: 'var(--color-muted)' }}>Recent Interventions</h3>
+          <div className="space-y-2">
+            {recent.map((event) => <EventItem key={event.id} event={event} />)}
+          </div>
+        </section>
 
-                <div className="text-sm font-bold leading-6" style={{ color: 'var(--color-text)' }}>
-                  {entry.diagnosis || 'Decision received'}
-                </div>
+        <section>
+          <h3 className="mb-2 text-xs font-semibold uppercase" style={{ color: 'var(--color-muted)' }}>System Summaries</h3>
+          <div className="space-y-2">
+            {summaries.map((event) => <EventItem key={event.id} event={event} compact />)}
+            {entries[0] && (
+              <div className="rounded-md border p-3 text-xs leading-5" style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted)' }}>
+                Backend agent: {entries[0].diagnosis || entries[0].reasoning || 'Decision received'}
+              </div>
+            )}
+          </div>
+        </section>
 
-                <div className="mt-2 max-w-full truncate font-mono text-sm" style={{ color: colorForAction(entry.action) }}>
-                  {entry.action || 'observe'}
-                </div>
-
-                <p className="mt-2 text-sm leading-6" style={{ color: 'var(--color-muted)' }}>
-                  <span className={idx === 0 ? 'typewriter' : ''}>{visibleReasoning || 'No reasoning supplied.'}</span>
-                  {shouldTruncate && !isExpanded ? (
-                    <>
-                      <span>...</span>{' '}
-                      <button type="button" className="font-semibold" style={{ color: 'var(--color-info)' }} onClick={() => setExpanded((prev) => ({ ...prev, [key]: true }))}>
-                        more
-                      </button>
-                    </>
-                  ) : null}
-                </p>
-
-                {shouldTruncate && isExpanded ? (
-                  <button type="button" className="mt-2 text-sm font-semibold" style={{ color: 'var(--color-info)' }} onClick={() => setExpanded((prev) => ({ ...prev, [key]: false }))}>
-                    less
-                  </button>
-                ) : null}
-              </article>
-            )
-          })
-        )}
+        <section>
+          <h3 className="mb-2 text-xs font-semibold uppercase" style={{ color: 'var(--color-muted)' }}>Audit Log</h3>
+          <div className="space-y-2">
+            {audit.map((event) => <EventItem key={event.id} event={event} compact />)}
+          </div>
+        </section>
       </div>
     </section>
   )

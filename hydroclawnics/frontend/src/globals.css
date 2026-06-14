@@ -7,19 +7,19 @@
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 
   --color-bg: #0d1218;
-  --color-surface: #1a2130;
-  --color-surface-2: #263142;
-  --color-panel: #131a24;
-  --color-text: #f5f1de;
-  --color-muted: #a8a49e;
-  --color-border: #465163;
-  --color-border-strong: #607085;
-  --color-success: #7fb069;
-  --color-warning: #d4a373;
-  --color-critical: #c9566b;
-  --color-info: #6fa3d8;
+  --color-surface: #111a25;
+  --color-surface-2: #1a2635;
+  --color-panel: #0f1722;
+  --color-text: #f4f8fb;
+  --color-muted: #98a8b7;
+  --color-border: #273648;
+  --color-border-strong: #38506a;
+  --color-success: #58d68d;
+  --color-warning: #f5b85b;
+  --color-critical: #ff5c7a;
+  --color-info: #6cc3ff;
   --color-neutral: #6a6a6a;
-  --color-hover: rgba(127, 176, 105, 0.1);
+  --color-hover: rgba(108, 195, 255, 0.12);
   --color-overlay: rgba(0, 0, 0, 0.7);
 }
 
@@ -82,8 +82,11 @@ a:focus-visible {
 
 .app-panel {
   border: 1px solid var(--color-border);
-  background: var(--color-panel);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0)),
+    rgba(15, 23, 34, 0.86);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045), 0 14px 48px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(18px);
 }
 
 .calm-card:hover {
@@ -182,4 +185,81 @@ a:focus-visible {
 }
 .agent-pulse-dot {
   animation: agent-pulse 2s ease-in-out infinite;
+}
+
+.status-pill,
+.severity-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.status-healthy,
+.severity-normal,
+.severity-info {
+  border-color: rgba(88, 214, 141, 0.45);
+  background: rgba(88, 214, 141, 0.12);
+  color: var(--color-success);
+}
+
+.status-warning,
+.status-recovering,
+.severity-warning {
+  border-color: rgba(245, 184, 91, 0.5);
+  background: rgba(245, 184, 91, 0.14);
+  color: var(--color-warning);
+}
+
+.status-critical,
+.severity-critical {
+  border-color: rgba(255, 92, 122, 0.55);
+  background: rgba(255, 92, 122, 0.14);
+  color: var(--color-critical);
+}
+
+.status-verifying {
+  border-color: rgba(108, 195, 255, 0.5);
+  background: rgba(108, 195, 255, 0.14);
+  color: var(--color-info);
+}
+
+.pod-card {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.pod-card:hover {
+  border-color: var(--color-info);
+  transform: translateY(-1px);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.24);
+}
+
+.pod-tooltip {
+  display: grid;
+  gap: 3px;
+  min-width: 150px;
+  border: 1px solid rgba(108, 195, 255, 0.34);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: rgba(7, 13, 21, 0.88);
+  color: var(--color-text);
+  font-size: 11px;
+  line-height: 1.35;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.38);
+}
+
+.pod-tooltip span {
+  color: var(--color-muted);
+}
+
+select,
+input {
+  color-scheme: dark;
 }

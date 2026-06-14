@@ -10,15 +10,17 @@ const TABS = [
   { id: 'overview',   label: 'Farm Overview' },
   { id: 'farm',       label: '3D Farm' },
   { id: 'automation', label: 'Automation' },
+  { id: 'history',    label: 'History' },
+  { id: 'analytics',  label: 'Analytics' },
   { id: 'settings',   label: 'Settings' },
 ]
 
-export default function Navbar({ connectionStatus, healthSummary, tab, onTabChange, drawerOpen, onDrawerToggle }) {
+export default function Navbar({ connectionStatus, healthSummary, farmSummary, tab, onTabChange, drawerOpen, onDrawerToggle }) {
   const status = connectionStatus || 'disconnected'
 
   return (
     <header
-      className="flex h-16 shrink-0 items-center gap-5 border-b px-4 md:px-5"
+      className="flex min-h-16 shrink-0 items-center gap-4 border-b px-4 md:px-5"
       style={{ background: 'var(--color-panel)', borderColor: 'var(--color-border-strong)' }}
     >
       <div className="flex shrink-0 items-center gap-2.5">
@@ -35,7 +37,7 @@ export default function Navbar({ connectionStatus, healthSummary, tab, onTabChan
       </div>
 
       <nav
-        className="flex items-center gap-1.5 rounded-full border p-1.5"
+        className="flex min-w-0 items-center gap-1 overflow-x-auto rounded-md border p-1"
         style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)' }}
         aria-label="Main navigation"
       >
@@ -46,7 +48,7 @@ export default function Navbar({ connectionStatus, healthSummary, tab, onTabChan
               key={t.id}
               type="button"
               onClick={() => onTabChange(t.id)}
-              className="rounded-full px-3.5 py-1.5 text-sm font-semibold transition-all duration-200"
+              className="whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-semibold transition-all duration-200"
               style={{
                 background: active ? 'var(--color-info)' : 'transparent',
                 color: active ? 'var(--color-bg)' : 'var(--color-muted)',
@@ -59,7 +61,8 @@ export default function Navbar({ connectionStatus, healthSummary, tab, onTabChan
       </nav>
 
       <div className="ml-auto flex shrink-0 items-center gap-4 text-sm" style={{ color: 'var(--color-muted)' }}>
-        <div className="hidden items-center gap-3 sm:flex">
+        <div className="hidden items-center gap-3 xl:flex">
+          <span className="font-mono" style={{ color: 'var(--color-text)' }}>{farmSummary?.healthScore ?? 0}% health</span>
           <span className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full" style={{ background: 'var(--color-success)' }} />
             {healthSummary.healthy}
@@ -72,6 +75,7 @@ export default function Navbar({ connectionStatus, healthSummary, tab, onTabChan
             <span className="h-2 w-2 rounded-full" style={{ background: 'var(--color-critical)' }} />
             {healthSummary.critical}
           </span>
+          <span>{farmSummary?.activeInterventions ?? 0} interventions</span>
         </div>
 
         <div className="flex items-center gap-1.5">

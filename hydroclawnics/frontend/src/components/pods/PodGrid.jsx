@@ -1,348 +1,245 @@
 import { useMemo, useState } from 'react'
-import PhysicalPot from './PhysicalPot'
-import usePodGrid from '../../hooks/usePodGrid'
+import { Sparklines, SparklinesLine } from 'react-sparklines'
 import CropIcon from '../CropIcon'
+import PhysicalPot from './PhysicalPot'
+import { FAULT_TYPES, STATUS_ORDER, TARGET_RANGES, formatMetric, metricState } from '../../data/operations'
 
-const SORT_OPTIONS = [
-  { value: 'status',     label: 'Status (critical first)' },
-  { value: 'crop',       label: 'Plant type' },
-  { value: 'water_asc',  label: 'Water level ↑' },
-  { value: 'age_newest', label: 'Age (newest)' },
-  { value: 'modified',   label: 'Last modified' },
-  { value: 'id',         label: 'Pod ID' },
-]
-
-
-const SIMULATION_FAULTS = [
-  { id: 'ph_crash', label: 'pH crash' },
-  { id: 'nutrient_spike', label: 'Nutrient spike' },
-  { id: 'nutrient_low', label: 'Nutrient low' },
-]
-
-const STATUS_BORDER = {
-  healthy:  'var(--color-success)',
-  warning:  'var(--color-warning)',
+const STATUS_COLORS = {
+  healthy: 'var(--color-success)',
+  warning: 'var(--color-warning)',
   critical: 'var(--color-critical)',
+  recovering: 'var(--color-warning)',
+  verifying: 'var(--color-info)',
 }
 
-const STATUS_BG = {
-  critical: '#1c1620',
+const SORT_OPTIONS = [
+  { value: 'status', label: 'Severity' },
+  { value: 'zone', label: 'Zone' },
+  { value: 'crop', label: 'Crop' },
+  { value: 'reservoir', label: 'Reservoir' },
+  { value: 'modified', label: 'Last sync' },
+]
+
+function uniqueValues(pods, key) {
+  return [...new Set(pods.map((pod) => pod[key]).filter(Boolean))].sort()
+}
+
+function StatusHeader({ summary, connectionStatus, policy }) {
+  const lastSync = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  return (
+    <section className="grid gap-3 lg:grid-cols-[1.2fr_repeat(4,0.7fr)]">
+      <div className="app-panel rounded-md p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-xs uppercase" style={{ color: 'var(--color-muted)' }}>Farm Health</div>
+            <div className="mt-1 flex items-end gap-3">
+              <span className="text-4xl font-semibold leading-none">{summary.healthScore}%</span>
+              <span className="mb-1 text-sm" style={{ color: 'var(--color-success)' }}>Operational</span>
+            </div>
+          </div>
+          <div className="grid h-16 w-16 place-items-center rounded-md border font-mono text-lg" style={{ borderColor: 'var(--color-success)', background: 'rgba(88, 214, 141, 0.12)', color: 'var(--color-success)' }}>
+            AI
+          </div>
+        </div>
+        <div className="mt-4 grid grid-cols-3 gap-2 text-xs" style={{ color: 'var(--color-muted)' }}>
+          <span>Mode: <strong style={{ color: 'var(--color-text)' }}>{policy.mode}</strong></span>
+          <span>Connection: <strong style={{ color: 'var(--color-text)' }}>{connectionStatus}</strong></span>
+          <span>Last sync: <strong style={{ color: 'var(--color-text)' }}>{lastSync}</strong></span>
+        </div>
+      </div>
+
+      {[
+        ['Pods', summary.pods],
+        ['Active faults', summary.activeFaults],
+        ['Interventions', summary.activeInterventions],
+        ['Resolved today', summary.resolvedToday],
+      ].map(([label, value]) => (
+        <div key={label} className="app-panel rounded-md p-4">
+          <div className="text-xs uppercase" style={{ color: 'var(--color-muted)' }}>{label}</div>
+          <div className="mt-3 text-3xl font-semibold">{value}</div>
+        </div>
+      ))}
+    </section>
+  )
+}
+
+function FilterBar({ filters, setFilters, options, total, onSimulateFault, simulationMessage }) {
+  const update = (key, value) => setFilters((current) => ({ ...current, [key]: value }))
+  return (
+    <section className="app-panel rounded-md p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        {[
+          ['status', ['all', 'critical', 'warning', 'recovering', 'verifying', 'healthy']],
+          ['crop', ['all', ...options.crops]],
+          ['zone', ['all', ...options.zones]],
+          ['reservoir', ['all', ...options.reservoirs]],
+          ['severity', ['all', 'critical', 'warning', 'normal']],
+        ].map(([key, values]) => (
+          <select
+            key={key}
+            value={filters[key]}
+            onChange={(event) => update(key, event.target.value)}
+            className="min-h-9 rounded-md border px-2 text-xs capitalize"
+            style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            aria-label={`Filter by ${key}`}
+          >
+            {values.map((value) => <option key={value} value={value}>{key}: {value}</option>)}
+          </select>
+        ))}
+
+        <select
+          value={filters.sort}
+          onChange={(event) => update('sort', event.target.value)}
+          className="min-h-9 rounded-md border px-2 text-xs"
+          style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+          aria-label="Sort pods"
+        >
+          {SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>Sort: {option.label}</option>)}
+        </select>
+
+        <span className="ml-auto text-xs" style={{ color: 'var(--color-muted)' }}>{total} visible</span>
+
+        <select
+          value={filters.fault}
+          onChange={(event) => update('fault', event.target.value)}
+          className="min-h-9 rounded-md border px-2 text-xs"
+          style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+          aria-label="Fault type"
+        >
+          {FAULT_TYPES.map((fault) => <option key={fault.id} value={fault.id}>{fault.label}</option>)}
+        </select>
+        <button
+          type="button"
+          onClick={() => onSimulateFault(filters.fault)}
+          className="min-h-9 rounded-md border px-3 text-xs font-semibold"
+          style={{ borderColor: 'var(--color-critical)', background: 'rgba(255, 92, 122, 0.12)', color: 'var(--color-text)' }}
+        >
+          Simulate Fault
+        </button>
+        <span className="text-xs" style={{ color: 'var(--color-warning)' }}>{simulationMessage}</span>
+      </div>
+    </section>
+  )
+}
+
+function MetricChip({ pod, metric }) {
+  const state = metricState(pod[metric], metric)
+  const color = state.state === 'ok' ? 'var(--color-success)' : state.state === 'critical' ? 'var(--color-critical)' : 'var(--color-warning)'
+  return (
+    <div className="min-w-0 rounded-md border px-2 py-1.5" style={{ borderColor: 'var(--color-border)', background: 'rgba(8, 13, 20, 0.55)' }}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px]" style={{ color: 'var(--color-muted)' }}>{TARGET_RANGES[metric]?.label || metric}</span>
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+      </div>
+      <div className="mt-1 truncate font-mono text-xs font-semibold">{formatMetric(pod[metric], metric)}</div>
+      <div className="mt-0.5 truncate text-[10px]" style={{ color }}>{state.text}</div>
+    </div>
+  )
+}
+
+function Trend({ pod }) {
+  const values = (pod.history || []).map((reading) => Number(reading.ph || pod.ph || 0))
+  const stroke = STATUS_COLORS[pod.status] || 'var(--color-success)'
+  return (
+    <div className="h-9">
+      <Sparklines data={values.length > 1 ? values : [Number(pod.ph || 0), Number(pod.ph || 0)]} margin={3}>
+        <SparklinesLine color={stroke} style={{ strokeWidth: 2, fill: 'none' }} />
+      </Sparklines>
+    </div>
+  )
 }
 
 function PodCard({ pod, onSelect }) {
-  const borderColor = STATUS_BORDER[pod.status] || STATUS_BORDER.healthy
-  const bg = STATUS_BG[pod.status] || 'var(--color-surface)'
-  const hasFault = pod.fault_type && pod.fault_type !== 'none'
-
+  const accent = STATUS_COLORS[pod.status] || STATUS_COLORS.healthy
   return (
     <button
       type="button"
       onClick={() => onSelect?.(pod.id)}
-      className="min-w-0 rounded-md border text-left transition-all duration-200 hover:brightness-110"
-      style={{
-        background: bg,
-        borderColor: 'var(--color-border)',
-        borderLeftColor: borderColor,
-        borderLeftWidth: 4,
-      }}
+      className="pod-card min-w-0 rounded-md border p-3 text-left transition-all duration-200"
+      style={{ borderColor: 'var(--color-border)', borderTopColor: accent, background: 'rgba(19, 28, 40, 0.82)' }}
     >
-      <div className="p-3.5">
-        <div className="mb-1 flex min-w-0 items-center gap-2 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: 'var(--color-muted)' }}>
-          {pod.crop ? (
-            <>
-              <CropIcon crop={pod.crop} className="h-5 w-5" />
-              <span className="truncate">{pod.crop}</span>
-            </>
-          ) : '—'}
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <CropIcon crop={pod.crop} className="h-5 w-5" />
+            <span className="truncate text-sm font-semibold">{pod.id}</span>
+          </div>
+          <div className="mt-1 truncate text-xs capitalize" style={{ color: 'var(--color-muted)' }}>{pod.crop} / {pod.zone}</div>
         </div>
-        <div className="mb-2.5 flex items-baseline justify-between gap-2">
-          <span className="text-base font-bold leading-none" style={{ color: 'var(--color-text)' }}>
-            {pod.id}
-          </span>
-          {hasFault && (
-            <span
-              className="truncate text-[11px] font-bold leading-none"
-              style={{ color: pod.status === 'critical' ? 'var(--color-critical)' : 'var(--color-warning)' }}
-            >
-              {pod.fault_type}
-            </span>
-          )}
-        </div>
+        <span className={`status-pill status-${pod.status}`}>{pod.status}</span>
+      </div>
 
-        <div className="grid grid-cols-[auto_1fr_auto_1fr] items-baseline gap-x-2 gap-y-1">
-          {([
-            ['pH',  (Number(pod.ph) || 0).toFixed(2)],
-            ['EC',  `${Math.round(Number(pod.ec_ppm) || 0)}`],
-            ['°C',  (Number(pod.air_temp_c) || 0).toFixed(1)],
-            ['RH',  `${Math.round(Number(pod.humidity) || 0)}%`],
-          ]).map(([label, val]) => (
-            <div key={label} className="contents">
-              <span className="text-[11px]" style={{ color: 'var(--color-muted)' }}>{label}</span>
-              <span className="text-right font-mono text-xs font-semibold" style={{ color: 'var(--color-text)' }}>{val}</span>
-            </div>
-          ))}
-        </div>
+      <div className="grid grid-cols-2 gap-2">
+        {['ph', 'ec_ppm', 'air_temp_c', 'humidity'].map((metric) => <MetricChip key={metric} pod={pod} metric={metric} />)}
+      </div>
 
-        
+      <div className="mt-3 rounded-md border p-2" style={{ borderColor: 'var(--color-border)', background: 'rgba(7, 11, 17, 0.6)' }}>
+        <div className="mb-1 flex items-center justify-between text-[10px] uppercase" style={{ color: 'var(--color-muted)' }}>
+          <span>pH trend</span>
+          <span>{pod.lifecycle || 'stable'}</span>
+        </div>
+        <Trend pod={pod} />
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-2 text-xs" style={{ color: 'var(--color-muted)' }}>
+        <span className="truncate">{pod.last_action || 'Stable'}</span>
+        <span className="shrink-0">{pod.reservoir}</span>
       </div>
     </button>
   )
 }
 
-function Toolbar({ grid, cropTypes, simulation }) {
-  const { statusFilter, setStatusFilter, cropFilter, setCropFilter, sort, setSort, total, counts } = grid
-
-  const toggleCrop = (crop) => {
-    setCropFilter(prev =>
-      prev.includes(crop) ? prev.filter(c => c !== crop) : [...prev, crop]
-    )
-  }
-
-  const totalAll = Object.values(counts).reduce((a, b) => a + b, 0)
-
-  return (
-    <div
-      className="mb-4 flex flex-wrap items-center gap-2.5 rounded-lg border px-4 py-3"
-      style={{ background: 'var(--color-panel)', borderColor: 'var(--color-border-strong)' }}
-    >
-      <div className="flex flex-wrap items-center gap-1.5">
-        {([
-          { id: 'all',      label: `All (${totalAll})`,              color: 'var(--color-info)' },
-          { id: 'critical', label: `Critical (${counts.critical})`,  color: 'var(--color-critical)' },
-          { id: 'warning',  label: `Warning (${counts.warning})`,    color: 'var(--color-warning)' },
-          { id: 'healthy',  label: `Healthy (${counts.healthy})`,    color: 'var(--color-success)' },
-        ]).map(({ id, label, color }) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setStatusFilter(id)}
-            className="rounded-full border px-3 py-1.5 text-xs font-semibold transition-all duration-150"
-            style={{
-              background: statusFilter === id ? color : 'var(--color-surface-2)',
-              color: statusFilter === id ? 'var(--color-bg)' : 'var(--color-muted)',
-              borderColor: statusFilter === id ? color : 'var(--color-border)',
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {cropTypes.length > 0 && (
-        <div className="h-5 w-px" style={{ background: 'var(--color-border)' }} />
-      )}
-
-      {cropTypes.map(crop => (
-        <button
-          key={crop}
-          type="button"
-          onClick={() => toggleCrop(crop)}
-          className="rounded-full border px-3 py-1.5 text-xs font-semibold transition-all duration-150 capitalize"
-          style={{
-            background: cropFilter.includes(crop) ? 'var(--color-info)' : 'var(--color-surface-2)',
-            color: cropFilter.includes(crop) ? 'var(--color-bg)' : 'var(--color-muted)',
-            borderColor: cropFilter.includes(crop) ? 'var(--color-info)' : 'var(--color-border)',
-          }}
-        >
-          <span className="inline-flex items-center gap-1.5">
-            <CropIcon crop={crop} className="h-5 w-5" />
-            <span>{crop}</span>
-          </span>
-        </button>
-      ))}
-
-      <div className="h-5 w-px" style={{ background: 'var(--color-border)' }} />
-      <select
-        value={sort}
-        onChange={e => setSort(e.target.value)}
-        className="rounded-md border px-3 py-1.5 text-xs font-semibold"
-        style={{ background: 'var(--color-surface-2)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-      >
-        {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-
-      <span className="ml-auto text-xs" style={{ color: 'var(--color-muted)' }}>
-        {total} pod{total !== 1 ? 's' : ''}
-      </span>
-
-      <button
-        type="button"
-        onClick={simulation.onInjectFault}
-        disabled={simulation.busy || simulation.disabled}
-        className="rounded-md border px-3 py-1.5 text-xs font-bold transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-50"
-        style={{
-          background: 'rgba(201, 86, 107, 0.18)',
-          borderColor: 'var(--color-critical)',
-          color: 'var(--color-text)',
-        }}
-      >
-        {simulation.busy ? 'Injecting...' : 'Simulate fault'}
-      </button>
-
-      {simulation.message && (
-        <span className="text-xs font-medium" style={{ color: simulation.error ? 'var(--color-critical)' : 'var(--color-warning)' }}>
-          {simulation.message}
-        </span>
-      )}
-    </div>
-  )
+function sortPods(pods, sort) {
+  const list = [...pods]
+  if (sort === 'status') return list.sort((a, b) => (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9))
+  if (sort === 'modified') return list.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))
+  return list.sort((a, b) => `${a[sort] || ''}`.localeCompare(`${b[sort] || ''}`))
 }
 
-function Pagination({ page, totalPages, setPage, perPage, setPerPage, total }) {
-  const start = (page - 1) * perPage + 1
-  const end = Math.min(page * perPage, total)
-
-  const pages = useMemo(() => {
-    if (totalPages <= 5) return Array.from({ length: totalPages }, (_, i) => i + 1)
-    if (page <= 3) return [1, 2, 3, 4, '…', totalPages]
-    if (page >= totalPages - 2) return [1, '…', totalPages - 3, totalPages - 2, totalPages - 1, totalPages]
-    return [1, '…', page - 1, page, page + 1, '…', totalPages]
-  }, [page, totalPages])
-
-  return (
-    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3" style={{ background: 'var(--color-panel)', borderColor: 'var(--color-border)' }}>
-      <span className="text-xs" style={{ color: 'var(--color-muted)' }}>
-        Pods <strong style={{ color: 'var(--color-text)' }}>{start}–{end}</strong> of <strong style={{ color: 'var(--color-text)' }}>{total}</strong>
-      </span>
-
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          onClick={() => setPage(p => Math.max(1, p - 1))}
-          disabled={page === 1}
-          className="grid h-8 w-8 place-items-center rounded-md border text-base transition-colors disabled:opacity-30"
-          style={{ background: 'var(--color-surface-2)', borderColor: 'var(--color-border)', color: 'var(--color-muted)' }}
-        >‹</button>
-
-        {pages.map((p, i) =>
-          p === '…'
-            ? <span key={`e${i}`} className="px-1 text-sm" style={{ color: 'var(--color-muted)' }}>…</span>
-            : (
-              <button
-                key={p}
-                type="button"
-                onClick={() => setPage(p)}
-                className="grid h-8 w-8 place-items-center rounded-md border text-sm font-semibold transition-colors"
-                style={{
-                  background: page === p ? 'var(--color-info)' : 'var(--color-surface-2)',
-                  color: page === p ? 'var(--color-bg)' : 'var(--color-muted)',
-                  borderColor: page === p ? 'var(--color-info)' : 'var(--color-border)',
-                }}
-              >{p}</button>
-            )
-        )}
-
-        <button
-          type="button"
-          onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-          disabled={page === totalPages}
-          className="grid h-8 w-8 place-items-center rounded-md border text-base transition-colors disabled:opacity-30"
-          style={{ background: 'var(--color-surface-2)', borderColor: 'var(--color-border)', color: 'var(--color-muted)' }}
-        >›</button>
-      </div>
-
-      <div className="flex items-center gap-1.5">
-        <span className="text-xs" style={{ color: 'var(--color-muted)' }}>Per page</span>
-        <select
-          value={perPage}
-          onChange={e => setPerPage(Number(e.target.value))}
-          className="rounded-md border px-3 py-1.5 text-xs"
-          style={{ background: 'var(--color-surface-2)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-        >
-          {[12, 24, 48].map(n => <option key={n} value={n}>{n}</option>)}
-        </select>
-      </div>
-    </div>
-  )
-}
-
-export default function PodGrid({ pods, onSelect }) {
-  const grid = usePodGrid(pods)
-  const physicalPod = pods.pod_00 || Object.values(pods)[0] || null
-  const cropTypes = grid.cropTypes
-  const [simulationBusy, setSimulationBusy] = useState(false)
-  const [simulationMessage, setSimulationMessage] = useState('')
-  const [simulationError, setSimulationError] = useState(false)
-
-  const simulationPods = useMemo(
-    () => Object.values(pods).filter((pod) => pod.id && pod.id !== physicalPod?.id),
-    [pods, physicalPod?.id],
-  )
-
-  const injectSimulationFault = async () => {
-    if (simulationPods.length === 0 || simulationBusy) {
-      return
-    }
-
-    const pod = simulationPods[Math.floor(Math.random() * simulationPods.length)]
-    const fault = SIMULATION_FAULTS[Math.floor(Math.random() * SIMULATION_FAULTS.length)]
-
-    setSimulationBusy(true)
-    setSimulationError(false)
-    setSimulationMessage(`Sending ${fault.label} to ${pod.id}...`)
-
-    try {
-      const response = await fetch(`/api/fault/${encodeURIComponent(pod.id)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fault: fault.id }),
-      })
-      if (!response.ok) {
-        throw new Error(`Fault request failed (${response.status})`)
-      }
-      setSimulationMessage(`${pod.id}: ${fault.label}`)
-      onSelect?.(pod.id)
-    } catch {
-      setSimulationError(true)
-      setSimulationMessage('Could not inject fault')
-    } finally {
-      setSimulationBusy(false)
-    }
-  }
-
-  if (grid.total === 0 && Object.keys(pods).length === 0) {
-    return (
-      <div className="flex h-full items-center justify-center rounded-lg border text-sm italic" style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted)' }}>
-        Waiting for pod telemetry...
-      </div>
-    )
-  }
+export default function PodGrid({ pods, summary, connectionStatus, onSelect, onSimulateFault, simulationMessage, policy }) {
+  const podList = useMemo(() => Object.values(pods), [pods])
+  const [filters, setFilters] = useState({
+    status: 'all',
+    crop: 'all',
+    zone: 'all',
+    reservoir: 'all',
+    severity: 'all',
+    sort: 'status',
+    fault: 'ph_drop',
+  })
+  const options = useMemo(() => ({
+    crops: uniqueValues(podList, 'crop'),
+    zones: uniqueValues(podList, 'zone'),
+    reservoirs: uniqueValues(podList, 'reservoir'),
+  }), [podList])
+  const visible = useMemo(() => sortPods(podList.filter((pod) => (
+    (filters.status === 'all' || pod.status === filters.status) &&
+    (filters.crop === 'all' || pod.crop === filters.crop) &&
+    (filters.zone === 'all' || pod.zone === filters.zone) &&
+    (filters.reservoir === 'all' || pod.reservoir === filters.reservoir) &&
+    (filters.severity === 'all' || pod.severity === filters.severity)
+  )), filters.sort), [filters, podList])
 
   return (
-    <div className="flex h-full flex-col">
-      <Toolbar
-        grid={grid}
-        cropTypes={cropTypes}
-        simulation={{
-          busy: simulationBusy,
-          disabled: simulationPods.length === 0,
-          error: simulationError,
-          message: simulationMessage,
-          onInjectFault: injectSimulationFault,
-        }}
+    <div className="flex h-full flex-col gap-4">
+      <StatusHeader summary={summary} connectionStatus={connectionStatus} policy={policy} />
+      <FilterBar
+        filters={filters}
+        setFilters={setFilters}
+        options={options}
+        total={visible.length}
+        onSimulateFault={onSimulateFault}
+        simulationMessage={simulationMessage}
       />
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-          {physicalPod && (
-            <div className="col-span-2">
-              <PhysicalPot pods={pods} />
-            </div>
-          )}
-          {grid.paginated.map(pod => (
-            <PodCard key={pod.id} pod={pod} onSelect={onSelect} />
-          ))}
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          <div className="md:col-span-2">
+            <PhysicalPot pods={pods} />
+          </div>
+          {visible.map((pod) => <PodCard key={pod.id} pod={pod} onSelect={onSelect} />)}
         </div>
       </div>
-
-      <Pagination
-        page={grid.page}
-        totalPages={grid.totalPages}
-        setPage={grid.setPage}
-        perPage={grid.perPage}
-        setPerPage={grid.setPerPage}
-        total={grid.total}
-      />
     </div>
   )
 }

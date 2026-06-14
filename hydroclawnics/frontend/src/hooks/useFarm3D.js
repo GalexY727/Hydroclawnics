@@ -27,11 +27,20 @@ export default function useFarm3D(pods) {
       pod_id: pod.id,
       crop: pod.crop,
       status: pod.status,
+      fault_type: pod.fault_type,
+      lifecycle: pod.lifecycle,
+      zone: pod.zone,
+      reservoir: pod.reservoir,
+      ph: pod.ph,
+      ec_ppm: pod.ec_ppm,
+      water_level: pod.water_level,
+      flow_rate: pod.flow_rate,
+      pump_status: pod.pump_status,
       age_hours: Number(pod.age_hours) || 0,
       stage: deriveStage(pod.age_hours),
       health: deriveHealth(pod.status),
       podIndex: idx,
-      position: [(col - (cols - 1) / 2) * 3, 0, (row - 1) * 3],
+      position: [(col - (cols - 1) / 2) * 2.45, 0, (row - 1) * 2.15],
     }
   })
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import AgentLog from '../components/AgentLog'
 import AgentActivityFeed from '../components/automation/AgentActivityFeed'
 import Farm3D from '../components/farm/Farm3D'
@@ -7,25 +7,211 @@ import PodDetailModal from '../components/pods/PodDetailModal'
 import PodGrid from '../components/pods/PodGrid'
 import SettingsPanel from '../components/settings/SettingsPanel'
 import useWebSocket from '../hooks/useWebSocket'
+import {
+  FAULT_TYPES,
+  LIFECYCLE_STEPS,
+  POLICY_DEFAULTS,
+  advanceFaultPod,
+  applyFaultToPod,
+  buildAnalytics,
+  buildMockPods,
+  buildSeedEvents,
+  makeEvent,
+  mergeLivePods,
+  summarizeFarm,
+} from '../data/operations'
+
+function HistoryEventsPage({ events, pods }) {
+  const [severity, setSeverity] = useState('all')
+  const [query, setQuery] = useState('')
+  const filtered = useMemo(() => events.filter((event) => {
+    const matchesSeverity = severity === 'all' || event.severity === severity
+    const haystack = `${event.podId} ${event.zone} ${event.reservoir} ${event.crop} ${event.issue} ${event.action}`.toLowerCase()
+    return matchesSeverity && haystack.includes(query.toLowerCase())
+  }), [events, query, severity])
+
+  return (
+    <div className="flex h-full flex-col gap-4 overflow-hidden">
+      <div className="app-panel rounded-md p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl font-semibold">History / Events</h1>
+            <p className="mt-1 text-sm" style={{ color: 'var(--color-muted)' }}>
+              Audit trail for readings, anomalies, decisions, manual actions, interventions, and verification results.
+            </p>
+          </div>
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Filter pod, crop, zone, reservoir"
+            className="min-h-10 w-full rounded-md border px-3 text-sm sm:w-72"
+            style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+          />
+          <select
+            value={severity}
+            onChange={(event) => setSeverity(event.target.value)}
+            className="min-h-10 rounded-md border px-3 text-sm"
+            style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+          >
+            {['all', 'critical', 'warning', 'info', 'normal'].map((item) => <option key={item} value={item}>{item}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-md border" style={{ borderColor: 'var(--color-border)' }}>
+        {filtered.map((event) => {
+          const pod = pods[event.podId]
+          return (
+            <article key={event.id} className="grid gap-3 border-b p-4 md:grid-cols-[150px_1fr_150px]" style={{ borderColor: 'var(--color-border)', background: 'rgba(16, 24, 34, 0.72)' }}>
+              <div className="text-xs" style={{ color: 'var(--color-muted)' }}>
+                <div>{new Date(event.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
+                <div className="mt-2 font-mono">{event.lifecycle}</div>
+              </div>
+              <div className="min-w-0">
+                <div className="mb-1 flex flex-wrap items-center gap-2 text-xs">
+                  <span className={`severity-chip severity-${event.severity}`}>{event.severity}</span>
+                  <span style={{ color: 'var(--color-muted)' }}>{event.podId} / {event.zone} / {event.reservoir}</span>
+                </div>
+                <h2 className="text-sm font-semibold">{event.issue}</h2>
+                <p className="mt-1 text-sm leading-6" style={{ color: 'var(--color-muted)' }}>
+                  Evidence: {event.evidence}. Diagnosis: {event.diagnosis}. Action: {event.action}. Result: {event.result}.
+                </p>
+              </div>
+              <div className="text-xs md:text-right" style={{ color: 'var(--color-muted)' }}>
+                <div>{pod?.crop || event.crop}</div>
+                <div className="mt-2">Confidence {event.confidence}%</div>
+                <div>Risk {event.risk}</div>
+              </div>
+            </article>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function AnalyticsPage({ pods, events }) {
+  const computed = useMemo(() => buildAnalytics(pods, events), [events, pods])
+
+  return (
+    <div className="h-full overflow-y-auto">
+      <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+        <section className="app-panel rounded-md p-4">
+          <h1 className="text-xl font-semibold">Analytics</h1>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {[
+              ['Farm health', `${computed.healthScore}%`],
+              ['Active faults', computed.activeFaults],
+              ['Resolved today', computed.resolved],
+              ['Avg recovery', `${computed.avgRecoveryMin} min`],
+              ['Success rate', `${computed.successRate}%`],
+              ['Sensor reliability', `${computed.sensorReliability}%`],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-md border p-4" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
+                <div className="text-xs uppercase" style={{ color: 'var(--color-muted)' }}>{label}</div>
+                <div className="mt-2 text-2xl font-semibold">{value}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="app-panel rounded-md p-4">
+          <h2 className="text-base font-semibold">Recurring Patterns</h2>
+          <div className="mt-4 space-y-3">
+            {['pH drift clusters in tomato reservoir R-01', 'Humidity lows repeat after afternoon venting', 'Sensor drift risk highest on East Rack'].map((item, index) => (
+              <div key={item} className="flex items-center gap-3 rounded-md border p-3" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
+                <span className="grid h-8 w-8 place-items-center rounded-md font-mono text-sm" style={{ background: 'var(--color-surface-2)', color: 'var(--color-info)' }}>{index + 1}</span>
+                <span className="text-sm" style={{ color: 'var(--color-muted)' }}>{item}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="app-panel rounded-md p-4 xl:col-span-2">
+          <h2 className="text-base font-semibold">Stability By Crop</h2>
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            {computed.byCrop.map((row) => (
+              <div key={row.crop} className="rounded-md border p-3" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
+                <div className="capitalize">{row.crop}</div>
+                <div className="mt-3 space-y-2 text-sm" style={{ color: 'var(--color-muted)' }}>
+                  <div className="flex justify-between"><span>Avg pH</span><strong>{row.ph}</strong></div>
+                  <div className="flex justify-between"><span>Avg EC</span><strong>{row.ec}</strong></div>
+                  <div className="flex justify-between"><span>Faults</span><strong>{row.faults}</strong></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    </div>
+  )
+}
 
 export default function App() {
-  const { pods, agentLog, agentCycles, podAgentUpdates, connectionStatus } = useWebSocket()
+  const { pods: livePods, agentLog, agentCycles, podAgentUpdates, connectionStatus } = useWebSocket()
   const [tab, setTab] = useState('overview')
   const [detailPodId, setDetailPodId] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(true)
   const [autoTrackingPodId, setAutoTrackingPodId] = useState(null)
+  const [pods, setPods] = useState(() => buildMockPods())
+  const [policy, setPolicy] = useState(POLICY_DEFAULTS)
+  const [events, setEvents] = useState(() => buildSeedEvents(buildMockPods()))
+  const [simulationMessage, setSimulationMessage] = useState('Ready')
+  const timersRef = useRef([])
+
+  useEffect(() => {
+    setPods((current) => mergeLivePods(current, livePods))
+  }, [livePods])
+
+  useEffect(() => () => {
+    timersRef.current.forEach((timer) => window.clearTimeout(timer))
+  }, [])
 
   const podList = useMemo(() => Object.values(pods), [pods])
 
-  const healthSummary = useMemo(() =>
-    podList.reduce(
-      (s, pod) => { s[pod.status] = (s[pod.status] || 0) + 1; return s },
-      { healthy: 0, warning: 0, critical: 0 },
-    ), [podList])
+  const farmSummary = useMemo(() => summarizeFarm(pods, events), [events, pods])
+  const healthSummary = farmSummary.counts
 
   const handleAutoOrbitPodId = useCallback((podId) => {
     setAutoTrackingPodId(podId)
   }, [])
+
+  const injectFault = useCallback((faultId, podId) => {
+    const fault = FAULT_TYPES.find((item) => item.id === faultId) || FAULT_TYPES[0]
+    const candidates = podList.filter((pod) => pod.id !== 'pod_00')
+    const target = pods[podId] || candidates[Math.floor(Math.random() * candidates.length)] || podList[0]
+    if (!target) return
+
+    const detectedPod = applyFaultToPod(target, fault, 'detected')
+    setPods((current) => ({ ...current, [target.id]: detectedPod }))
+    setEvents((current) => [makeEvent({ pod: detectedPod, fault, lifecycle: 'detected' }), ...current].slice(0, 120))
+    setDetailPodId(target.id)
+    setSimulationMessage(`${fault.label} injected on ${target.id}`)
+
+    const lifecycle = LIFECYCLE_STEPS.slice(1)
+    lifecycle.forEach((step, index) => {
+      const timer = window.setTimeout(() => {
+        let eventToAdd = null
+        setPods((current) => {
+          const active = current[target.id]
+          if (!active) return current
+          const nextPod = advanceFaultPod(active, fault, step)
+          eventToAdd = makeEvent({
+            pod: nextPod,
+            fault,
+            lifecycle: step,
+            action: step === 'diagnosing' ? 'Cross-checking reservoir and sensor trend' : fault.action,
+            result: step === 'resolved' ? 'Verified back inside target range' : 'Lifecycle progressing',
+          })
+          return { ...current, [target.id]: nextPod }
+        })
+        if (eventToAdd) {
+          setEvents((existing) => [eventToAdd, ...existing].slice(0, 120))
+        }
+      }, (index + 1) * 1900)
+      timersRef.current.push(timer)
+    })
+  }, [podList, pods])
 
   const isFarmTab = tab === 'farm'
   const isAutomationTab = tab === 'automation'
@@ -42,6 +228,7 @@ export default function App() {
       <Navbar
         connectionStatus={connectionStatus}
         healthSummary={healthSummary}
+        farmSummary={farmSummary}
         tab={tab}
         onTabChange={(t) => { setTab(t); if (t !== 'automation') setAutoTrackingPodId(null) }}
         drawerOpen={drawerOpen}
@@ -56,6 +243,7 @@ export default function App() {
             onPodSelect={setDetailPodId}
             onClose={() => setTab('overview')}
             agentEvents={podAgentUpdates}
+            events={events}
             isAutomationTab={isAutomationTab}
             autoTrackingPodId={autoTrackingPodId}
             onAutoOrbitPodId={handleAutoOrbitPodId}
@@ -67,12 +255,31 @@ export default function App() {
           <main className="min-h-0 flex-1 overflow-hidden p-4">
             {tab === 'overview' && (
               <div key="overview" className="tab-enter h-full">
-                <PodGrid pods={pods} onSelect={setDetailPodId} />
+                <PodGrid
+                  pods={pods}
+                  events={events}
+                  summary={farmSummary}
+                  connectionStatus={connectionStatus}
+                  onSelect={setDetailPodId}
+                  onSimulateFault={injectFault}
+                  simulationMessage={simulationMessage}
+                  policy={policy}
+                />
+              </div>
+            )}
+            {tab === 'history' && (
+              <div key="history" className="tab-enter h-full">
+                <HistoryEventsPage events={events} pods={pods} />
+              </div>
+            )}
+            {tab === 'analytics' && (
+              <div key="analytics" className="tab-enter h-full">
+                <AnalyticsPage pods={pods} events={events} />
               </div>
             )}
             {tab === 'settings' && (
               <div key="settings" className="tab-enter h-full overflow-y-auto">
-                <SettingsPanel pods={pods} connectionStatus={connectionStatus} />
+                <SettingsPanel pods={pods} connectionStatus={connectionStatus} policy={policy} setPolicy={setPolicy} />
               </div>
             )}
           </main>
@@ -84,7 +291,16 @@ export default function App() {
             className="shrink-0 overflow-y-auto p-4"
             style={{ width: '42%', minHeight: 0, borderLeft: '1px solid var(--color-border-strong)', background: 'var(--color-panel)' }}
           >
-            <AgentActivityFeed agentCycles={agentCycles} connectionStatus={connectionStatus} />
+            <AgentActivityFeed
+              agentCycles={agentCycles}
+              connectionStatus={connectionStatus}
+              pods={pods}
+              events={events}
+              policy={policy}
+              setPolicy={setPolicy}
+              onSimulateFault={injectFault}
+              simulationMessage={simulationMessage}
+            />
           </div>
         )}
 
@@ -94,7 +310,7 @@ export default function App() {
             className="drawer-open hidden shrink-0 border-l p-4 lg:block"
             style={{ width: 340, borderColor: 'var(--color-border-strong)', background: 'var(--color-panel)' }}
           >
-            <AgentLog entries={agentLog} connectionStatus={connectionStatus} pods={pods} />
+            <AgentLog entries={agentLog} events={events} connectionStatus={connectionStatus} pods={pods} />
           </aside>
         )}
       </div>
@@ -102,6 +318,12 @@ export default function App() {
       <PodDetailModal
         pod={detailPodId ? pods[detailPodId] : null}
         agentLog={agentLog}
+        events={events}
+        onManualAction={(action) => {
+          const pod = pods[detailPodId]
+          if (!pod) return
+          setEvents((current) => [makeEvent({ pod, lifecycle: 'manual_action', action, result: 'Awaiting operator confirmation' }), ...current].slice(0, 120))
+        }}
         onClose={() => setDetailPodId(null)}
       />
     </div>
