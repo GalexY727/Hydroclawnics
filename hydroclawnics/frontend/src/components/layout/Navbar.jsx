@@ -10,7 +10,7 @@ const TABS = [
   { id: 'overview',   label: 'Farm Overview' },
   { id: 'farm',       label: '3D Farm' },
   { id: 'automation', label: 'Automation' },
-  { id: 'history',    label: 'History' },
+  { id: 'auditlog',    label: 'Audit Log' },
   { id: 'analytics',  label: 'Analytics' },
   { id: 'settings',   label: 'Settings' },
 ]

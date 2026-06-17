@@ -22,12 +22,6 @@ function friendlyStatus(status) {
   return status || 'healthy'
 }
 
-function timeLabel(timestamp) {
-  const date = timestamp ? new Date(timestamp) : new Date()
-  if (Number.isNaN(date.getTime())) return '--:--'
-  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-}
-
 function faultForPod(pod) {
   return FAULT_TYPES.find((fault) => fault.id === pod.fault_type) || null
 }
@@ -152,50 +146,6 @@ function filterPods(pods, query) {
 
   if (sort === 'recent') return [...filtered].sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))
   return [...filtered].sort(defaultPodSort)
-}
-
-function farmState(summary) {
-  if (summary.counts.critical > 0) return { label: 'Critical Attention', status: 'critical' }
-  if (summary.counts.warning > 0 || summary.counts.verifying > 0 || summary.counts.recovering > 0) return { label: 'Watch', status: 'warning' }
-  return { label: 'Operational', status: 'healthy' }
-}
-
-function FarmSummary({ summary, connectionStatus, policy, incidents }) {
-  const state = farmState(summary)
-  const activeIncidents = incidents.filter((incident) => incident.status === 'active').length
-  const stablePods = summary.counts.healthy || 0
-  const lastSync = timeLabel()
-  const metrics = [
-    ['Operational status', state.label],
-    ['Total pods', summary.pods],
-    ['Stable pods', stablePods],
-    ['Active incidents', activeIncidents],
-    ['Mode', policy.mode],
-    ['Connection', connectionStatus],
-    ['Last sync', lastSync],
-  ]
-
-  return (
-    <section className="app-panel dashboard-summary rounded-md p-3">
-      <div className="grid items-center gap-3 xl:grid-cols-[170px_1fr]">
-        <div className="min-w-0">
-          <div className="text-xs uppercase" style={{ color: 'var(--color-muted)' }}>Farm Health</div>
-          <div className="mt-1 flex items-center gap-2">
-            <span className="font-mono text-3xl font-semibold leading-none">{summary.healthScore}%</span>
-            <span className={`status-pill status-pill-small status-${state.status}`}>{state.label}</span>
-          </div>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-          {metrics.map(([label, value]) => (
-            <div key={label} className="summary-metric">
-              <div className="truncate text-[10px] uppercase" style={{ color: 'var(--color-muted)' }}>{label}</div>
-              <div className="mt-0.5 truncate text-xs font-semibold sm:text-sm">{value}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
 }
 
 function ZoneStatusGrid({ pods }) {
@@ -339,50 +289,49 @@ function PodCardCompact({ pod, incident, active, onSelect }) {
   const metrics = metricPair(pod)
   const quiet = status === 'healthy'
 
-  return (
+return (
     <button
-      type="button"
-      onClick={() => onSelect?.(pod.id)}
-      className={`pod-card pod-card-compact ${quiet ? 'pod-card-quiet' : ''} ${active ? 'pod-card-active' : ''}`}
-      style={{ borderTopColor: accent }}
+        type="button"
+        onClick={() => onSelect?.(pod.id)}
+        className={`pod-card pod-card-compact flex flex-col h-full text-left ${quiet ? 'pod-card-quiet' : ''} ${active ? 'pod-card-active' : ''}`}
+        style={{ borderTopColor: accent }}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <CropIcon crop={pod.crop} className="h-4 w-4 shrink-0" />
-            <span className="truncate text-sm font-semibold">{pod.id}</span>
-          </div>
-          <div className="mt-1 truncate text-xs capitalize" style={{ color: 'var(--color-muted)' }}>{pod.crop} · {pod.zone}</div>
+        <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+                <div className="flex min-w-0 items-center gap-1.5">
+                    <CropIcon crop={pod.crop} className="h-4 w-4 shrink-0" />
+                    <span className="truncate text-sm font-semibold">{pod.id}</span>
+                </div>
+                <div className="mt-1 truncate text-xs capitalize" style={{ color: 'var(--color-muted)' }}>{pod.crop} · {pod.zone}</div>
+            </div>
+            <span className={`status-pill status-pill-small status-${status}`}>{status}</span>
         </div>
-        <span className={`status-pill status-pill-small status-${status}`}>{status}</span>
-      </div>
 
-      <div className="mt-2 min-h-[18px] truncate text-xs font-semibold sm:text-sm" style={{ color: quiet ? 'var(--color-muted)' : accent }}>
-        {issueLabel(pod)}
-      </div>
+        {issueLabel(pod) !== 'Healthy' && (
+            <div className="mt-2 min-h-[18px] truncate text-xs font-semibold sm:text-sm" style={{ color: quiet ? 'var(--color-muted)' : accent }}>
+                {issueLabel(pod)}
+            </div>
+        )}
 
-      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs" style={{ color: 'var(--color-text)' }}>
-        {metrics.map((metric) => (
-          <span key={metric} className="font-mono">{metricText(pod, metric)}</span>
-        ))}
-      </div>
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs" style={{ color: 'var(--color-text)' }}>
+            {metrics.map((metric) => (
+                <span key={metric} className="font-mono">{metricText(pod, metric)}</span>
+            ))}
+        </div>
 
-      <div className="mt-2 flex min-w-0 items-center justify-between gap-2 text-xs" style={{ color: 'var(--color-muted)' }}>
-        <span className="truncate">{incident ? `Incident ${incident.lifecycle.replaceAll('_', ' ')}` : pod.last_action || 'Stable'}</span>
-        <span className="shrink-0">{pod.reservoir}</span>
-      </div>
+        <div className="mt-auto pt-2 flex min-w-0 items-center justify-between gap-2 text-xs" style={{ color: 'var(--color-muted)' }}>
+            <span className="truncate">{incident ? `Incident ${incident.lifecycle.replaceAll('_', ' ')}` : pod.last_action || 'Stable'}</span>
+            <span className="shrink-0">{pod.reservoir}</span>
+        </div>
     </button>
-  )
+)
 }
 
 export default function PodGrid({
   pods,
-  summary,
-  connectionStatus,
   onSelect,
   onSimulateFault,
   simulationMessage,
-  policy,
   incidents = [],
   activeIncident,
   onIncidentSelect,
@@ -397,7 +346,6 @@ export default function PodGrid({
 
   return (
     <div className="overview-dashboard flex h-full min-h-0 flex-col gap-3">
-      <FarmSummary summary={summary} connectionStatus={connectionStatus} policy={policy} incidents={incidents} />
       <ZoneStatusGrid pods={podList} />
       <ActiveIncidentSummary incident={activeIncident} onIncidentSelect={onIncidentSelect} onSelect={onSelect} />
       <SmartPodSearch

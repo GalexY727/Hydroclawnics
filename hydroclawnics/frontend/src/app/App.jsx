@@ -23,7 +23,7 @@ import {
   summarizeFarm,
 } from '../data/operations'
 
-function HistoryEventsPage({ events, pods, incidents, onIncidentSelect }) {
+function AuditLog({ events, pods, incidents, onIncidentSelect }) {
   const [severity, setSeverity] = useState('all')
   const [query, setQuery] = useState('')
   const filtered = useMemo(() => events.filter((event) => {
@@ -37,7 +37,7 @@ function HistoryEventsPage({ events, pods, incidents, onIncidentSelect }) {
       <div className="app-panel rounded-md p-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="min-w-0 flex-1">
-            <h1 className="text-xl font-semibold">History / Events</h1>
+            <h1 className="text-xl font-semibold">Audit Log</h1>
             <p className="mt-1 text-sm" style={{ color: 'var(--color-muted)' }}>
               Audit trail for readings, anomalies, decisions, manual actions, interventions, and verification results.
             </p>
@@ -409,12 +409,9 @@ export default function App() {
                 <PodGrid
                   pods={pods}
                   events={events}
-                  summary={farmSummary}
-                  connectionStatus={connectionStatus}
                   onSelect={setDetailPodId}
                   onSimulateFault={injectFault}
                   simulationMessage={simulationMessage}
-                  policy={policy}
                   incidents={incidents}
                   activeIncident={activeIncident}
                   agentStatus={agentStatus}
@@ -422,9 +419,9 @@ export default function App() {
                 />
               </div>
             )}
-            {tab === 'history' && (
-              <div key="history" className="tab-enter h-full">
-                <HistoryEventsPage events={events} pods={pods} incidents={incidents} onIncidentSelect={handleIncidentSelect} />
+            {tab === 'auditlog' && (
+              <div key="auditlog" className="tab-enter h-full">
+                <AuditLog events={events} pods={pods} incidents={incidents} onIncidentSelect={handleIncidentSelect} />
               </div>
             )}
             {tab === 'analytics' && (
