@@ -31,6 +31,7 @@ const TREND_ZONE_COLORS = {
 
 const TREND_CHART_HEIGHT = 168
 const TREND_CHART_MARGIN = { top: 8, right: 14, bottom: 18, left: 0 }
+const TREND_ZONE_BLEND_PCT = 0.42
 
 function normalize(value) {
   return `${value ?? ''}`.trim().toLowerCase()
@@ -178,7 +179,6 @@ function trendGradientStops(scale) {
     { offset: 0, color: zoneColorForValue(scale.max, scale) },
     { offset: 100, color: zoneColorForValue(scale.min, scale) },
   ]
-  const softEdge = 2.4
   const boundaries = [
     { value: scale.criticalHigh, highColor: TREND_ZONE_COLORS.critical, lowColor: TREND_ZONE_COLORS.warning },
     { value: scale.healthyMax, highColor: TREND_ZONE_COLORS.warning, lowColor: TREND_ZONE_COLORS.stable },
@@ -190,8 +190,10 @@ function trendGradientStops(scale) {
     const offset = yOffsetInScale(value, scale)
     if (offset <= 0 || offset >= 100) return
     stops.push(
-      { offset: clamp(offset - softEdge), color: highColor },
-      { offset: clamp(offset + softEdge), color: lowColor },
+      { offset: clamp(offset - TREND_ZONE_BLEND_PCT), color: highColor },
+      { offset: clamp(offset), color: highColor },
+      { offset: clamp(offset), color: lowColor },
+      { offset: clamp(offset + TREND_ZONE_BLEND_PCT), color: lowColor },
     )
   })
 
@@ -214,6 +216,90 @@ function trendReferenceLines(scale) {
 
 function markerLabel(label, value, metric, range) {
   return `${label}: ${formatMetricValue(value, metric, range)}`
+}
+
+function agentEntryPodId(entry) {
+  const matchingAction = entry?.actions_taken?.find((action) => action?.pod_id || action?.params?.pod_id)
+  return entry?.pod_id || entry?.podId || entry?.table_id || entry?.params?.pod_id || matchingAction?.pod_id || matchingAction?.params?.pod_id || ''
+}
+
+function agentEntryTime(entry) {
+  return entry?.timestamp || entry?.ts || entry?.actions_taken?.[0]?.ts || null
+}
+
+function podAgentText(entry) {
+  if (!entry) return ''
+  return entry.reasoning || entry.diagnosis || entry.raw_reasoning || entry.reason || entry.summary_text || ''
+}
+
+function actionLabel(value) {
+  if (!value) return ''
+  return `${value}`.replaceAll('_', ' ')
+}
+
+function buildTelemetryAssessment(pod) {
+  const metric = issueMetric(pod)
+  const range = rangeForPod(pod, metric)
+  const state = metricStateForPod(pod, metric)
+  const value = formatMetricValue(pod?.[metric], metric, range)
+  const target = range ? `${formatMetricValue(range.min, metric, range)}-${formatMetricValue(range.max, metric, range)}` : 'not configured'
+  const stable = state.state === 'ok' && ['healthy', 'resolved', 'stable'].includes(pod?.status || pod?.lifecycle || 'healthy')
+
+  if (stable) {
+    return {
+      severity: 'normal',
+      summary: `${metricLabel(metric)} is in target at ${value}. No intervention is queued for this pod.`,
+      evidence: `Current ${metricLabel(metric)} ${value}; target ${target}.`,
+      action: pod?.last_action && pod.last_action !== 'Stable scan' ? pod.last_action : 'Continue routine scan',
+      result: 'Telemetry is inside the configured target window.',
+    }
+  }
+
+  return {
+    severity: state.state === 'critical' || pod?.status === 'critical' ? 'critical' : 'warning',
+    summary: `${metricLabel(metric)} needs attention: ${value} against target ${target}.`,
+    evidence: `${metricLabel(metric)} ${state.text}; current ${value}; target ${target}.`,
+    action: pod?.last_action && pod.last_action !== 'Stable scan' ? pod.last_action : 'Verify sensor trend and prepare corrective action',
+    result: pod?.lifecycle ? `Lifecycle is ${pod.lifecycle.replaceAll('_', ' ')}.` : 'Awaiting verification.',
+  }
+}
+
+function buildAgentAssessment(pod, latestEvent, podAgentEntry) {
+  const telemetry = buildTelemetryAssessment(pod)
+  const fault = FAULT_TYPES.find((item) => item.id === pod?.fault_type)
+  const liveAction = actionLabel(podAgentEntry?.action || podAgentEntry?.tool || podAgentEntry?.actions_taken?.find((action) => action?.tool && action.tool !== 'no_op')?.tool)
+  const liveText = podAgentText(podAgentEntry)
+  const liveStatus = podAgentEntry?.status
+
+  if (podAgentEntry) {
+    return {
+      severity: liveStatus === 'critical' ? 'critical' : liveStatus === 'warning' ? 'warning' : telemetry.severity,
+      timestamp: agentEntryTime(podAgentEntry),
+      source: 'live decision',
+      summary: liveText || telemetry.summary,
+      evidence: podAgentEntry.diagnosis || telemetry.evidence,
+      action: liveAction || latestEvent?.action || fault?.action || telemetry.action,
+      result: podAgentEntry.result || latestEvent?.result || telemetry.result,
+    }
+  }
+
+  if (latestEvent) {
+    return {
+      severity: latestEvent.severity || telemetry.severity,
+      timestamp: latestEvent.timestamp,
+      source: latestEvent.lifecycle?.replaceAll('_', ' ') || 'event',
+      summary: latestEvent.diagnosis || latestEvent.issue || telemetry.summary,
+      evidence: latestEvent.evidence || telemetry.evidence,
+      action: latestEvent.action || fault?.action || telemetry.action,
+      result: latestEvent.result || telemetry.result,
+    }
+  }
+
+  return {
+    ...telemetry,
+    timestamp: pod?.timestamp,
+    source: 'current telemetry',
+  }
 }
 
 function MiniRange({ pod, metric, emphasized }) {
@@ -363,26 +449,23 @@ function TrendChart({ data, metric, pod }) {
   )
 }
 
-function AgentAssessment({ pod, latestEvent, podAgentEntries }) {
-  const fault = FAULT_TYPES.find((item) => item.id === pod.fault_type)
-  const stable = !latestEvent && !fault
+function AgentAssessment({ pod, latestEvent, podAgentEntry }) {
+  const assessment = buildAgentAssessment(pod, latestEvent, podAgentEntry)
   return (
     <section className="detail-panel">
       <div className="detail-section-heading">
         <h3>Agent Assessment</h3>
-        <span>{latestEvent ? timeLabel(latestEvent.timestamp) : 'latest state'}</span>
+        <span>{assessment.timestamp ? timeLabel(assessment.timestamp) : assessment.source}</span>
       </div>
-      {stable ? (
-        <p className="text-sm leading-6" style={{ color: 'var(--color-muted)' }}>
-          {podAgentEntries[0]?.reasoning || 'The pod is stable. The agent is watching for trend deviation before recommending changes.'}
-        </p>
-      ) : (
-        <div className="grid gap-2 text-sm leading-6" style={{ color: 'var(--color-muted)' }}>
-          <p><strong style={{ color: 'var(--color-text)' }}>Evidence:</strong> {latestEvent?.evidence || `${metricLabel(issueMetric(pod))} outside target`}</p>
-          <p><strong style={{ color: 'var(--color-text)' }}>Action:</strong> {latestEvent?.action || fault?.action || pod.last_action || 'Observe'}</p>
-          <p><strong style={{ color: 'var(--color-text)' }}>Result:</strong> {latestEvent?.result || 'Awaiting verification'}</p>
+      <div className="grid gap-2 text-sm leading-6" style={{ color: 'var(--color-muted)' }}>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`severity-chip severity-${assessment.severity}`}>{assessment.source}</span>
+          <p className="min-w-0 flex-1">{assessment.summary}</p>
         </div>
-      )}
+        <p><strong style={{ color: 'var(--color-text)' }}>Evidence:</strong> {assessment.evidence}</p>
+        <p><strong style={{ color: 'var(--color-text)' }}>Action:</strong> {assessment.action}</p>
+        <p><strong style={{ color: 'var(--color-text)' }}>Result:</strong> {assessment.result}</p>
+      </div>
     </section>
   )
 }
@@ -454,8 +537,12 @@ export default function PodDetailModal({ pod, events = [], agentLog = [], onManu
       }
     })
   }, [pod])
-  const podAgentEntries = useMemo(() => agentLog.filter((entry) => entry.pod_id === pod?.id), [agentLog, pod?.id])
-  const latestEvent = useMemo(() => events.find((event) => event.podId === pod?.id), [events, pod?.id])
+  const podId = pod?.id
+  const podAgentEntry = useMemo(() => {
+    if (!podId) return null
+    return agentLog.find((entry) => agentEntryPodId(entry) === podId) || null
+  }, [agentLog, podId])
+  const latestEvent = useMemo(() => events.find((event) => event.podId === podId), [events, podId])
 
   if (!pod) return null
 
@@ -499,7 +586,7 @@ export default function PodDetailModal({ pod, events = [], agentLog = [], onManu
             <div className="grid content-start gap-4">
               <TelemetryTable pod={pod} selectedMetric={selectedMetric} onMetricSelect={setSelectedMetric} />
               <TrendChart data={chartData} metric={selectedMetric} pod={pod} />
-              <AgentAssessment pod={pod} latestEvent={latestEvent} podAgentEntries={podAgentEntries} />
+              <AgentAssessment pod={pod} latestEvent={latestEvent} podAgentEntry={podAgentEntry} />
             </div>
             <aside className="grid content-start gap-4">
               <section className="detail-panel">
