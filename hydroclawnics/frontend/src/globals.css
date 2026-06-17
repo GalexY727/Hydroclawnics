@@ -415,6 +415,11 @@ a:focus-visible {
   height: 8px;
   min-width: 0;
   overflow: visible;
+  z-index: 1;
+}
+
+.metric-range-track:hover {
+  z-index: 40;
 }
 
 .metric-range-track::before {
@@ -473,7 +478,7 @@ a:focus-visible {
   position: absolute;
   left: 50%;
   bottom: calc(100% + 6px);
-  z-index: 20;
+  z-index: 80;
   max-width: 112px;
   transform: translateX(-50%) translateY(2px);
   border: 1px solid var(--color-border-strong);
@@ -496,6 +501,21 @@ a:focus-visible {
 .metric-current:hover::after,
 .metric-range-track:hover .metric-current::after {
   opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.metric-current::after {
+  z-index: 90;
+}
+
+.metric-current::after {
+  top: calc(100% + 6px);
+  bottom: auto;
+  transform: translateX(-50%) translateY(-2px);
+}
+
+.metric-current:hover::after,
+.metric-range-track:hover .metric-current::after {
   transform: translateX(-50%) translateY(0);
 }
 
