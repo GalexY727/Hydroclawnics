@@ -29,9 +29,7 @@ const TREND_ZONE_COLORS = {
   critical: '#ff5c7a',
 }
 
-const TREND_CHART_HEIGHT = 168
 const TREND_CHART_MARGIN = { top: 8, right: 14, bottom: 18, left: 0 }
-const TREND_ZONE_BLEND_PCT = 0.42
 
 function normalize(value) {
   return `${value ?? ''}`.trim().toLowerCase()
@@ -160,48 +158,11 @@ function positionInScale(value, scale) {
   return clamp(((value - scale.min) / (scale.max - scale.min)) * 100)
 }
 
-function yOffsetInScale(value, scale) {
-  if (!Number.isFinite(value) || scale.max === scale.min) return 50
-  return clamp(((scale.max - value) / (scale.max - scale.min)) * 100)
-}
-
 function zoneColorForValue(value, scale) {
   if (!Number.isFinite(value) || !scale) return TREND_ZONE_COLORS.stable
   if (value < scale.criticalLow || value > scale.criticalHigh) return TREND_ZONE_COLORS.critical
   if (value < scale.healthyMin || value > scale.healthyMax) return TREND_ZONE_COLORS.warning
   return TREND_ZONE_COLORS.stable
-}
-
-function trendGradientStops(scale) {
-  if (!scale || !Number.isFinite(scale.min) || !Number.isFinite(scale.max) || scale.max === scale.min) return []
-
-  const stops = [
-    { offset: 0, color: zoneColorForValue(scale.max, scale) },
-    { offset: 100, color: zoneColorForValue(scale.min, scale) },
-  ]
-  const boundaries = [
-    { value: scale.criticalHigh, highColor: TREND_ZONE_COLORS.critical, lowColor: TREND_ZONE_COLORS.warning },
-    { value: scale.healthyMax, highColor: TREND_ZONE_COLORS.warning, lowColor: TREND_ZONE_COLORS.stable },
-    { value: scale.healthyMin, highColor: TREND_ZONE_COLORS.stable, lowColor: TREND_ZONE_COLORS.warning },
-    { value: scale.criticalLow, highColor: TREND_ZONE_COLORS.warning, lowColor: TREND_ZONE_COLORS.critical },
-  ]
-
-  boundaries.forEach(({ value, highColor, lowColor }) => {
-    const offset = yOffsetInScale(value, scale)
-    if (offset <= 0 || offset >= 100) return
-    stops.push(
-      { offset: clamp(offset - TREND_ZONE_BLEND_PCT), color: highColor },
-      { offset: clamp(offset), color: highColor },
-      { offset: clamp(offset), color: lowColor },
-      { offset: clamp(offset + TREND_ZONE_BLEND_PCT), color: lowColor },
-    )
-  })
-
-  return stops.sort((a, b) => a.offset - b.offset)
-}
-
-function safeIdToken(value) {
-  return `${value ?? 'metric'}`.replace(/[^a-zA-Z0-9_-]/g, '-')
 }
 
 function trendReferenceLines(scale) {
@@ -212,6 +173,66 @@ function trendReferenceLines(scale) {
     { key: 'critical-min', y: scale.criticalLow, color: TREND_ZONE_COLORS.critical },
     { key: 'critical-max', y: scale.criticalHigh, color: TREND_ZONE_COLORS.critical },
   ].filter(({ y }) => Number.isFinite(y) && y >= scale.min && y <= scale.max)
+}
+
+function segmentBreakpoints(a, b, scale) {
+  if (!scale || a.value === b.value) return []
+  const low = Math.min(a.value, b.value)
+  const high = Math.max(a.value, b.value)
+  return [scale.criticalLow, scale.healthyMin, scale.healthyMax, scale.criticalHigh]
+    .filter((value) => Number.isFinite(value) && value > low && value < high)
+    .sort((left, right) => (a.value < b.value ? left - right : right - left))
+    .map((value) => {
+      const ratio = (value - a.value) / (b.value - a.value)
+      return {
+        x: a.x + (b.x - a.x) * ratio,
+        y: a.y + (b.y - a.y) * ratio,
+        value,
+      }
+    })
+}
+
+function ZonedTrendLine({ points = [], scale, strokeWidth = 2.4 }) {
+  const cleanPoints = points
+    .map((point) => ({
+      x: Number(point?.x),
+      y: Number(point?.y),
+      value: Number(point?.value),
+    }))
+    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.value))
+
+  if (!scale || cleanPoints.length < 2) return null
+
+  const segments = []
+  for (let index = 0; index < cleanPoints.length - 1; index += 1) {
+    const start = cleanPoints[index]
+    const end = cleanPoints[index + 1]
+    const splitPoints = [start, ...segmentBreakpoints(start, end, scale), end]
+    for (let splitIndex = 0; splitIndex < splitPoints.length - 1; splitIndex += 1) {
+      const a = splitPoints[splitIndex]
+      const b = splitPoints[splitIndex + 1]
+      const midpoint = (a.value + b.value) / 2
+      segments.push({ a, b, color: zoneColorForValue(midpoint, scale) })
+    }
+  }
+
+  return (
+    <g className="zoned-trend-line" aria-hidden="true">
+      {segments.map(({ a, b, color }, index) => (
+        <line
+          key={`${index}-${a.x}-${a.y}`}
+          x1={a.x}
+          y1={a.y}
+          x2={b.x}
+          y2={b.y}
+          stroke={color}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={strokeWidth}
+        />
+      ))}
+    </g>
+  )
 }
 
 function markerLabel(label, value, metric, range) {
@@ -379,10 +400,7 @@ function TrendChart({ data, metric, pod }) {
         max: Math.max(baseScale.max, ...dataValues),
       }
     : null
-  const gradientId = `detail-trend-gradient-${safeIdToken(pod?.id)}-${safeIdToken(metric)}`
-  const gradientStops = trendGradientStops(scale)
   const referenceLines = trendReferenceLines(scale)
-  const stroke = gradientStops.length ? `url(#${gradientId})` : config.color
 
   return (
     <section className="detail-panel">
@@ -393,22 +411,6 @@ function TrendChart({ data, metric, pod }) {
       <div className="detail-trend-chart overflow-hidden">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={TREND_CHART_MARGIN}>
-            {gradientStops.length > 0 && (
-              <defs>
-                <linearGradient
-                  id={gradientId}
-                  x1="0"
-                  y1={TREND_CHART_MARGIN.top}
-                  x2="0"
-                  y2={TREND_CHART_HEIGHT - TREND_CHART_MARGIN.bottom}
-                  gradientUnits="userSpaceOnUse"
-                >
-                  {gradientStops.map((stop, index) => (
-                    <stop key={`${stop.offset}-${index}`} offset={`${stop.offset}%`} stopColor={stop.color} />
-                  ))}
-                </linearGradient>
-              </defs>
-            )}
             <CartesianGrid stroke="rgba(148, 163, 184, 0.1)" vertical={false} />
             <XAxis
               dataKey="timeToken"
@@ -418,10 +420,12 @@ function TrendChart({ data, metric, pod }) {
               axisLine={true}
             />
             <YAxis
+              type="number"
               width={48}
               tick={{ fill: 'var(--color-muted)', fontSize: 10 }}
               tickFormatter={(value) => compactNumber(value)}
               domain={scale ? [scale.min, scale.max] : undefined}
+              allowDataOverflow={true}
               axisLine={true}
               tickLine={true}
             />
@@ -441,7 +445,15 @@ function TrendChart({ data, metric, pod }) {
               labelFormatter={(_value, items) => items?.[0]?.payload?.timeAgoLabel || ''}
               contentStyle={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 6, color: 'var(--color-text)' }}
             />
-            <Line type="monotone" dataKey={metric} stroke={stroke} dot={false} strokeWidth={2.4} isAnimationActive={false} />
+            <Line
+              type="linear"
+              dataKey={metric}
+              stroke={config.color}
+              dot={false}
+              strokeWidth={2.4}
+              isAnimationActive={false}
+              shape={(props) => <ZonedTrendLine {...props} scale={scale} />}
+            />
           </LineChart>
         </ResponsiveContainer>
       </div>
