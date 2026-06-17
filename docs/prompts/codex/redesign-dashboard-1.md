@@ -68,10 +68,10 @@ Each zone should show:
 
 Example structure:
 
-* North Bay — Healthy — 12 pods
-* East Rack — Critical — pH issue
-* South Bench — Critical — pH issue
-* Research Rail — Warning — humidity verifying
+* Zone 1 — Healthy — 12 pods
+* Zone 2 — Critical — pH issue
+* Zone 3 — Critical — pH issue
+* Zone 4 — Warning — humidity verifying
 
 Active incident summary:
 Keep a focused active incident card/banner in the main pane.
@@ -118,13 +118,13 @@ Suggested compact card content:
 
 Example critical card:
 pod_014
-Tomato · East Rack
+Tomato · Zone 2
 Critical: pH low
 pH 5.33 ↓ · EC 2462 ppm ↑
 
 Example healthy card:
 pod_01
-Tomato · North Bay
+Tomato · Zone 1
 Healthy
 pH 6.23 · EC 976 ppm
 
@@ -153,7 +153,7 @@ The search should match:
 * metric names
 
 Suggested placeholder:
-Search pods, crops, zones… try `status:critical zone:"East Rack" crop:tomato`
+Search pods, crops, zones… try `status:critical zone:"Zone 2" crop:tomato`
 
 Supported structured keys:
 
@@ -161,7 +161,7 @@ Supported structured keys:
 * status:warning
 * status:healthy
 * status:verifying
-* zone:"East Rack"
+* zone:"Zone 2"
 * crop:tomato
 * reservoir:R-02
 * metric:ph
@@ -197,7 +197,7 @@ Suggested sections:
 Use event language that is easy to scan:
 
 * 9:07 PM — Humidity recovered to 58%
-* 9:04 PM — Started humidifier for Research Rail
+* 9:04 PM — Started humidifier for Zone 4
 * 9:02 PM — Humidity below target on pod_12
 
 Avoid excessive nested cards, tiny labels, and repeated progress bars.

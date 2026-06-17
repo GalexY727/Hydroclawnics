@@ -1,5 +1,5 @@
 const CROPS = ['tomato', 'basil', 'lettuce', 'spinach', 'microgreens']
-const ZONES = ['North Bay', 'East Rack', 'South Bench', 'Research Rail']
+const ZONES = ['Zone 1', 'Zone 2', 'Zone 3', 'Zone 4']
 const RESERVOIRS = ['R-01', 'R-02', 'R-03', 'R-04']
 const STAGES = ['Seedling', 'Vegetative', 'Flowering', 'Production']
 

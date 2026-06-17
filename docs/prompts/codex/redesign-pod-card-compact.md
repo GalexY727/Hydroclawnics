@@ -52,7 +52,7 @@ Keep the cards dense. Do not increase pod card height much.
 A good layout would be:
 
 pod_09                         WARNING
-Spinach · North Bay
+Spinach · Zone 1
 
 Temperature high
 Air temp 31.8 °C ↑    [mini range indicator]
@@ -63,7 +63,7 @@ R-01
 Or, for healthy pods:
 
 pod_010                        HEALTHY
-Tomato · East Rack
+Tomato · Zone 2
 
 pH 6.12              [mini range indicator]
 EC 1856 ppm          [mini range indicator]

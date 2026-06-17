@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import CropIcon from '../CropIcon'
-import { FAULT_TYPES, STATUS_ORDER, TARGET_RANGES, formatMetric, metricState } from '../../data/operations'
+import { FAULT_TYPES, STATUS_ORDER, TARGET_RANGES } from '../../data/operations'
 
 const STATUS_COLORS = {
   healthy: 'var(--color-success)',
@@ -31,15 +31,42 @@ function metricLabel(metric) {
 }
 
 function metricText(pod, metric) {
-  const state = metricState(pod[metric], metric)
+  const state = metricStateForPod(pod, metric)
   const arrow = state.state === 'ok' ? '' : state.delta < 0 ? ' ↓' : ' ↑'
-  return `${metricLabel(metric)} ${formatMetric(pod[metric], metric)}${arrow}`
+  return `${metricLabel(metric)} ${formatMetricWithRange(pod[metric], metric, rangeForPod(pod, metric))}${arrow}`
+}
+
+function rangeForPod(pod, metric) {
+  const cropKey = normalize(pod.crop)
+  const podRanges = pod.target_ranges || pod.targetRanges || pod.ranges || {}
+  const cropRanges = pod.crop_target_ranges || pod.cropTargetRanges || {}
+  return podRanges[metric] || cropRanges[cropKey]?.[metric] || TARGET_RANGES[metric] || null
+}
+
+function formatMetricWithRange(value, metric, range) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return '--'
+  if (!range) return `${numeric}`
+  return `${numeric.toFixed(range.digits ?? 1)}${range.unit ?? ''}`
+}
+
+function metricStateForPod(pod, metric) {
+  const range = rangeForPod(pod, metric)
+  const numeric = Number(pod[metric])
+  if (!range || !Number.isFinite(numeric)) return { state: 'neutral', delta: 0, text: 'No range' }
+  const inRange = numeric >= range.min && numeric <= range.max
+  const delta = numeric < range.min ? numeric - range.min : numeric > range.max ? numeric - range.max : 0
+  return {
+    state: inRange ? 'ok' : Math.abs(delta) > (range.max - range.min) * 0.45 ? 'critical' : 'warning',
+    delta,
+    text: inRange ? `${range.min}-${range.max}${range.unit ?? ''}` : `${delta > 0 ? '+' : ''}${delta.toFixed(range.digits ?? 1)}${range.unit ?? ''}`,
+  }
 }
 
 function primaryDeviation(pod) {
   const fault = faultForPod(pod)
-  const metric = fault?.metric || METRIC_PRIORITY.find((key) => metricState(pod[key], key).state !== 'ok') || 'ph'
-  const state = metricState(pod[metric], metric)
+  const metric = fault?.metric || METRIC_PRIORITY.find((key) => metricStateForPod(pod, key).state !== 'ok') || 'ph'
+  const state = metricStateForPod(pod, metric)
   return { metric, state, fault }
 }
 
@@ -81,22 +108,29 @@ function recentMetricRange(pod, metric) {
 }
 
 function metricScale(pod, metric) {
-  const range = TARGET_RANGES[metric]
+  const range = rangeForPod(pod, metric)
   const current = Number(pod[metric])
   const recent = recentMetricRange(pod, metric)
 
   if (range) {
+    const rangeWidth = range.max - range.min
+    const criticalOffset = rangeWidth * 0.45
     return {
       min: range.scaleMin,
       max: range.scaleMax,
       healthyMin: range.min,
       healthyMax: range.max,
-      warningLow: range.min - (range.max - range.min) * 0.35,
-      warningHigh: range.max + (range.max - range.min) * 0.35,
-      criticalLow: range.min - (range.max - range.min) * 0.75,
-      criticalHigh: range.max + (range.max - range.min) * 0.75,
+      warningLow: range.min,
+      warningHigh: range.max,
+      criticalLow: range.min - criticalOffset,
+      criticalHigh: range.max + criticalOffset,
       recent,
       current,
+      source: pod.target_ranges?.[metric] || pod.targetRanges?.[metric] || pod.ranges?.[metric]
+        ? 'pod'
+        : pod.crop_target_ranges?.[normalize(pod.crop)]?.[metric] || pod.cropTargetRanges?.[normalize(pod.crop)]?.[metric]
+          ? 'crop'
+          : 'global',
     }
   }
 
@@ -113,6 +147,10 @@ function metricScale(pod, metric) {
 function positionInScale(value, scale) {
   if (!Number.isFinite(value) || scale.max === scale.min) return 50
   return clamp(((value - scale.min) / (scale.max - scale.min)) * 100)
+}
+
+function metricMarkerLabel(label, value, metric, range) {
+  return `${label}: ${formatMetricWithRange(value, metric, range)}`
 }
 
 function statusRank(pod) {
@@ -187,7 +225,7 @@ function matchesStructuredFilter(pod, filters) {
     const metric = rawMetric === 'ec' ? 'ec_ppm' : rawMetric
     const deviation = primaryDeviation(pod)
     const isRelevant = normalize(deviation.metric) === metric || normalize(metricLabel(deviation.metric)) === metric
-    const isOutOfRange = metricState(pod[deviation.metric], deviation.metric).state !== 'ok'
+    const isOutOfRange = metricStateForPod(pod, deviation.metric).state !== 'ok'
     if (!isRelevant || (!isOutOfRange && friendlyStatus(pod.status) === 'healthy')) return false
   }
   return true
@@ -297,7 +335,7 @@ function SmartPodSearch({ query, setQuery, total, visible, onSimulateFault, simu
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder={'Search pods, crops, zones... try status:critical zone:"East Rack" crop:tomato'}
+            placeholder={'Search pods, crops, zones... try status:critical zone:"Zone 2" crop:tomato'}
             className="min-h-9 w-full rounded-md border px-3 text-sm"
             style={{ background: 'rgba(8, 13, 20, 0.72)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
             aria-label="Search pods"
@@ -310,7 +348,7 @@ function SmartPodSearch({ query, setQuery, total, visible, onSimulateFault, simu
           <summary aria-label="Search syntax help">?</summary>
           <div>
             <span>status:critical</span>
-            <span>zone:"East Rack"</span>
+            <span>zone:"Zone 2"</span>
             <span>crop:tomato</span>
             <span>reservoir:R-02</span>
             <span>metric:ph</span>
@@ -342,15 +380,15 @@ function SmartPodSearch({ query, setQuery, total, visible, onSimulateFault, simu
 }
 
 function MiniMetricRange({ pod, metric, emphasized }) {
-  const range = TARGET_RANGES[metric]
+  const range = rangeForPod(pod, metric)
   const scale = metricScale(pod, metric)
-  const state = metricState(pod[metric], metric)
+  const state = metricStateForPod(pod, metric)
   const currentPosition = positionInScale(scale.current, scale)
   const healthyLeft = range ? positionInScale(scale.healthyMin, scale) : null
   const healthyRight = range ? positionInScale(scale.healthyMax, scale) : null
   const recentLeft = scale.recent ? positionInScale(scale.recent.low, scale) : currentPosition
   const recentRight = scale.recent ? positionInScale(scale.recent.high, scale) : currentPosition
-  const title = `${metricLabel(metric)} current ${formatMetric(pod[metric], metric)}${scale.recent ? `, recent range ${formatMetric(scale.recent.low, metric)} to ${formatMetric(scale.recent.high, metric)}` : ''}${range ? `, healthy range ${range.min} to ${range.max}${range.unit}` : ''}`
+  const title = `${metricLabel(metric)} current ${formatMetricWithRange(pod[metric], metric, range)}${scale.recent ? `, recent range ${formatMetricWithRange(scale.recent.low, metric, range)} to ${formatMetricWithRange(scale.recent.high, metric, range)}` : ''}${range ? `, healthy range ${formatMetricWithRange(range.min, metric, range)} to ${formatMetricWithRange(range.max, metric, range)}, ${scale.source || 'global'} target` : ''}`
   const markerClass = state.state === 'critical' ? 'metric-current metric-current-critical' : state.state === 'warning' ? 'metric-current metric-current-warning' : 'metric-current'
 
   return (
@@ -371,13 +409,13 @@ function MiniMetricRange({ pod, metric, emphasized }) {
         )}
         {range && (
           <>
-            <span className="metric-threshold metric-warning-marker" style={{ left: `${positionInScale(scale.warningLow, scale)}%` }} />
-            <span className="metric-threshold metric-warning-marker" style={{ left: `${positionInScale(scale.warningHigh, scale)}%` }} />
-            <span className="metric-threshold metric-critical-marker" style={{ left: `${positionInScale(scale.criticalLow, scale)}%` }} />
-            <span className="metric-threshold metric-critical-marker" style={{ left: `${positionInScale(scale.criticalHigh, scale)}%` }} />
+            <span className="metric-threshold metric-warning-marker" data-label={metricMarkerLabel('Warn low', scale.warningLow, metric, range)} style={{ left: `${positionInScale(scale.warningLow, scale)}%` }} />
+            <span className="metric-threshold metric-warning-marker" data-label={metricMarkerLabel('Warn high', scale.warningHigh, metric, range)} style={{ left: `${positionInScale(scale.warningHigh, scale)}%` }} />
+            <span className="metric-threshold metric-critical-marker" data-label={metricMarkerLabel('Crit low', scale.criticalLow, metric, range)} style={{ left: `${positionInScale(scale.criticalLow, scale)}%` }} />
+            <span className="metric-threshold metric-critical-marker" data-label={metricMarkerLabel('Crit high', scale.criticalHigh, metric, range)} style={{ left: `${positionInScale(scale.criticalHigh, scale)}%` }} />
           </>
         )}
-        <span className={markerClass} style={{ left: `${currentPosition}%` }} />
+        <span className={markerClass} data-label={metricMarkerLabel('Current', scale.current, metric, range)} style={{ left: `${currentPosition}%` }} />
       </div>
     </div>
   )
