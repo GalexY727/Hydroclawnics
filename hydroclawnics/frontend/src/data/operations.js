@@ -18,8 +18,8 @@ export const INCIDENT_STAGES = [
 export const TARGET_RANGES = {
   ph: { label: 'pH', min: 5.8, max: 6.4, unit: '', digits: 2, scaleMin: 4.8, scaleMax: 7.4 },
   ec_ppm: { label: 'EC', min: 820, max: 1280, unit: ' ppm', digits: 0, scaleMin: 450, scaleMax: 1800 },
-  water_temp_c: { label: 'Water temp', min: 18, max: 23, unit: ' deg C', digits: 1, scaleMin: 12, scaleMax: 30 },
-  air_temp_c: { label: 'Air temp', min: 19, max: 27, unit: ' deg C', digits: 1, scaleMin: 12, scaleMax: 36 },
+  water_temp_c: { label: 'Water temp', min: 18, max: 23, unit: ' °C', digits: 1, scaleMin: 12, scaleMax: 30 },
+  air_temp_c: { label: 'Air temp', min: 19, max: 27, unit: ' °C', digits: 1, scaleMin: 12, scaleMax: 36 },
   humidity: { label: 'Humidity', min: 48, max: 72, unit: '%', digits: 0, scaleMin: 20, scaleMax: 95 },
   water_level: { label: 'Water', min: 42, max: 100, unit: '%', digits: 0, scaleMin: 0, scaleMax: 100 },
   light_lux: { label: 'Light', min: 18000, max: 44000, unit: ' lux', digits: 0, scaleMin: 0, scaleMax: 60000 },

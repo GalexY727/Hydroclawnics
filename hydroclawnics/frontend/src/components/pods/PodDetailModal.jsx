@@ -213,7 +213,7 @@ export default function PodDetailModal({ pod, events = [], agentLog = [], onManu
               <section className="grid gap-3 lg:grid-cols-3">
                 <TrendChart title="pH" data={chartData} dataKey="ph" stroke="var(--color-success)" unit="" />
                 <TrendChart title="EC" data={chartData} dataKey="ec_ppm" stroke="var(--color-warning)" unit=" ppm" />
-                <TrendChart title="Water Temp" data={chartData} dataKey="water_temp_c" stroke="var(--color-info)" unit=" deg C" />
+                <TrendChart title="Water Temp" data={chartData} dataKey="water_temp_c" stroke="var(--color-info)" unit=" °C" />
                 <TrendChart title="Humidity" data={chartData} dataKey="humidity" stroke="#8be9d4" unit="%" />
                 <TrendChart title="Water Level" data={chartData} dataKey="water_level" stroke="#78d7ff" unit="%" />
                 <TrendChart title="Light" data={chartData} dataKey="light_lux" stroke="#f5d66b" unit=" lux" />
