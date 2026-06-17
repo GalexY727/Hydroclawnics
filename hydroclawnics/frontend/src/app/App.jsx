@@ -174,6 +174,76 @@ function AnalyticsPage({ pods, events, incidents }) {
   )
 }
 
+const FEED_WIDTH_KEY = 'hydroclawnics.operationsFeedWidth'
+const FEED_MIN = 292
+const FEED_MAX = 620
+
+function initialFeedWidth() {
+  if (typeof window === 'undefined') return 360
+  const stored = Number(window.localStorage.getItem(FEED_WIDTH_KEY))
+  return Number.isFinite(stored) ? Math.max(FEED_MIN, Math.min(FEED_MAX, stored)) : 360
+}
+
+function ResizableDashboardLayout({ children, drawerOpen, feed }) {
+  const shellRef = useRef(null)
+  const [feedWidth, setFeedWidth] = useState(initialFeedWidth)
+
+  const startResize = useCallback((event) => {
+    event.preventDefault()
+    const shell = shellRef.current
+    if (!shell) return
+    const rect = shell.getBoundingClientRect()
+
+    const onPointerMove = (moveEvent) => {
+      const availableMax = Math.min(FEED_MAX, Math.round(rect.width * 0.42))
+      const next = Math.round(rect.right - moveEvent.clientX)
+      setFeedWidth(Math.max(FEED_MIN, Math.min(availableMax, next)))
+    }
+
+    const onPointerUp = () => {
+      window.removeEventListener('pointermove', onPointerMove)
+      window.removeEventListener('pointerup', onPointerUp)
+      const width = shellRef.current?.querySelector('[data-feed-pane]')?.getBoundingClientRect().width
+      if (width) window.localStorage.setItem(FEED_WIDTH_KEY, `${Math.round(width)}`)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    window.addEventListener('pointermove', onPointerMove)
+    window.addEventListener('pointerup', onPointerUp)
+  }, [])
+
+  return (
+    <div ref={shellRef} className="relative flex min-h-0 flex-1 overflow-hidden">
+      <main className="min-w-0 flex-1 overflow-hidden p-3">
+        {children}
+      </main>
+
+      {drawerOpen && (
+        <aside
+          data-feed-pane
+          className="operations-feed-pane hidden shrink-0 border-l p-3 lg:block"
+          style={{ width: feedWidth, borderColor: 'var(--color-border-strong)', background: 'var(--color-panel)' }}
+        >
+          <button type="button" className="feed-resize-handle" onPointerDown={startResize} aria-label="Resize operations feed" title="Resize operations feed" />
+          {feed}
+        </aside>
+      )}
+
+      {drawerOpen && (
+        <aside
+          className="fixed inset-x-3 bottom-3 top-[76px] z-20 border p-3 shadow-2xl lg:hidden"
+          style={{ borderColor: 'var(--color-border-strong)', background: 'var(--color-panel)' }}
+        >
+          {feed}
+        </aside>
+      )}
+    </div>
+  )
+}
+
 export default function App() {
   const { pods: livePods, agentLog, agentCycles, podAgentUpdates, connectionStatus } = useWebSocket()
   const [tab, setTab] = useState('overview')
@@ -319,7 +389,21 @@ export default function App() {
 
         {/* Overview / Settings content */}
         {!isAutomationTab && !isFarmTab && (
-          <main className="min-h-0 flex-1 overflow-hidden p-4">
+          <ResizableDashboardLayout
+            drawerOpen={drawerOpen}
+            feed={(
+              <AgentLog
+                entries={agentLog}
+                events={events}
+                incidents={incidents}
+                activeIncident={activeIncident}
+                agentStatus={agentStatus}
+                connectionStatus={connectionStatus}
+                pods={pods}
+                onIncidentSelect={handleIncidentSelect}
+              />
+            )}
+          >
             {tab === 'overview' && (
               <div key="overview" className="tab-enter h-full">
                 <PodGrid
@@ -353,7 +437,7 @@ export default function App() {
                 <SettingsPanel pods={pods} connectionStatus={connectionStatus} policy={policy} setPolicy={setPolicy} />
               </div>
             )}
-          </main>
+          </ResizableDashboardLayout>
         )}
 
         {/* Automation right panel (40%) */}
@@ -378,24 +462,6 @@ export default function App() {
           </div>
         )}
 
-        {/* AgentLog drawer — hidden on automation tab */}
-        {drawerOpen && !isAutomationTab && (
-          <aside
-            className="drawer-open hidden shrink-0 border-l p-4 lg:block"
-            style={{ width: 340, borderColor: 'var(--color-border-strong)', background: 'var(--color-panel)' }}
-          >
-            <AgentLog
-              entries={agentLog}
-              events={events}
-              incidents={incidents}
-              activeIncident={activeIncident}
-              agentStatus={agentStatus}
-              connectionStatus={connectionStatus}
-              pods={pods}
-              onIncidentSelect={handleIncidentSelect}
-            />
-          </aside>
-        )}
       </div>
 
       <PodDetailModal

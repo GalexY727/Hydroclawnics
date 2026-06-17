@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { INCIDENT_STAGES } from '../data/operations'
 
 function formatTime(timestamp) {
   const date = timestamp ? new Date(timestamp) : new Date()
@@ -7,118 +6,118 @@ function formatTime(timestamp) {
   return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
 
-function IncidentTimeline({ incident }) {
+function eventText(event) {
+  if (event.lifecycle === 'stable') return event.result || 'Farm scan completed'
+  if (event.lifecycle === 'action_applied') return event.action || event.issue
+  if (event.lifecycle === 'verifying') return event.result || `Verifying ${event.issue}`
+  if (event.lifecycle === 'resolved') return event.result || `${event.issue} resolved`
+  return event.issue || event.result || 'Agent activity recorded'
+}
+
+function AISentinelFeedItem({ agentStatus, activeIncident, podCount, stableCount }) {
   return (
-    <div className="mt-3 grid grid-cols-7 gap-1">
-      {INCIDENT_STAGES.map((stage, index) => {
-        const complete = incident.lifecycle === 'resolved' || index <= incident.stageIndex || incident.completedStages.has(stage.id)
-        return (
-          <div key={stage.id} className="min-w-0">
-            <div className="h-1.5 rounded-full" style={{ background: complete ? 'var(--color-info)' : 'var(--color-border)' }} />
-            <div className="mt-1 truncate text-[9px]" style={{ color: complete ? 'var(--color-text)' : 'var(--color-muted)' }}>
-              {stage.label}
-            </div>
-          </div>
-        )
-      })}
-    </div>
+    <section className="feed-block">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold">AI Sentinel</h3>
+          <p className="mt-0.5 text-xs leading-5" style={{ color: 'var(--color-muted)' }}>
+            Scanning {agentStatus.scanningPodId || '--'} in {agentStatus.scanningZone}. {stableCount} of {podCount} pods stable.
+          </p>
+        </div>
+        <span className="ai-pulse mt-1 h-3 w-3 shrink-0 rounded-full" style={{ background: 'var(--color-info)' }} />
+      </div>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full" style={{ background: 'var(--color-surface-2)' }}>
+        <div className="h-full rounded-full" style={{ width: `${agentStatus.cycleProgress}%`, background: 'var(--color-info)' }} />
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-1.5 text-[11px]" style={{ color: 'var(--color-muted)' }}>
+        <span>Next check <strong style={{ color: 'var(--color-text)' }}>{agentStatus.nextCheckSeconds}s</strong></span>
+        <span>Verifying <strong style={{ color: 'var(--color-text)' }}>{agentStatus.pendingVerification}</strong></span>
+        <span className="col-span-2 truncate">Current: <strong style={{ color: 'var(--color-text)' }}>{activeIncident?.lifecycle?.replaceAll('_', ' ') || 'routine scan'}</strong></span>
+      </div>
+    </section>
   )
 }
 
-function IncidentCard({ incident, active, expanded, onToggle, onSelect }) {
+function IncidentFeedCard({ incident, active, expanded, onToggle, onSelect }) {
+  const status = incident.lifecycle === 'verifying' ? 'verifying' : incident.severity
   return (
-    <article
-      className={`incident-card rounded-md border p-3 ${active ? 'incident-card-active' : ''}`}
-      style={{ borderColor: active ? 'var(--color-info)' : 'var(--color-border)', background: 'rgba(8, 13, 20, 0.68)' }}
-    >
+    <article className={`feed-incident ${active ? 'incident-card-active' : ''}`}>
       <button type="button" className="w-full text-left" onClick={() => onSelect?.(incident)}>
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <span className={`severity-chip severity-${incident.severity}`}>{incident.severity}</span>
+        <div className="flex items-center justify-between gap-2">
+          <span className={`status-pill status-${status}`}>{incident.lifecycle.replaceAll('_', ' ')}</span>
           <span className="text-[11px]" style={{ color: 'var(--color-muted)' }}>{formatTime(incident.timestamp)}</span>
         </div>
-        <div className="text-sm font-semibold leading-5">{incident.title}</div>
-        <div className="mt-1 text-xs" style={{ color: 'var(--color-muted)' }}>
-          {incident.podId} / {incident.crop} / {incident.zone} / {incident.reservoir}
+        <h4 className="mt-1.5 text-sm font-semibold leading-5">{incident.title}</h4>
+        <div className="mt-1 truncate text-xs" style={{ color: 'var(--color-muted)' }}>
+          {incident.podId} · {incident.crop} · {incident.zone} · {incident.reservoir}
         </div>
-        <div className="mt-2 flex items-center justify-between gap-2 text-[11px]" style={{ color: 'var(--color-muted)' }}>
-          <span className="capitalize">{incident.lifecycle.replaceAll('_', ' ')}</span>
-          <span>{incident.confidence}% confidence</span>
-        </div>
-        <IncidentTimeline incident={incident} />
       </button>
-
-      <div className="mt-3 grid gap-2 text-xs leading-5" style={{ color: 'var(--color-muted)' }}>
-        <p><strong style={{ color: 'var(--color-text)' }}>Evidence:</strong> {incident.evidence}</p>
-        <p><strong style={{ color: 'var(--color-text)' }}>Action:</strong> {incident.action}</p>
-        <p><strong style={{ color: 'var(--color-text)' }}>Verification:</strong> {incident.result}</p>
-      </div>
-
-      <button type="button" className="mt-3 text-xs font-semibold" style={{ color: 'var(--color-info)' }} onClick={() => onToggle(incident.id)}>
-        {expanded ? 'Hide audit events' : `${incident.events.length} audit events`}
+      <button type="button" className="mt-2 text-xs font-semibold" style={{ color: 'var(--color-info)' }} onClick={() => onToggle(incident.id)}>
+        {expanded ? 'Hide details' : 'Show evidence'}
       </button>
-
       {expanded && (
-        <div className="mt-3 space-y-2 border-t pt-3" style={{ borderColor: 'var(--color-border)' }}>
-          {incident.events.map((event) => (
-            <div key={event.id} className="rounded-md px-2 py-1.5 text-xs" style={{ background: 'rgba(255, 255, 255, 0.035)', color: 'var(--color-muted)' }}>
-              <span className="font-mono">{formatTime(event.timestamp)}</span> / {event.lifecycle} / {event.result}
-            </div>
-          ))}
+        <div className="mt-2 grid gap-1.5 border-t pt-2 text-xs leading-5" style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted)' }}>
+          <p><strong style={{ color: 'var(--color-text)' }}>Evidence:</strong> {incident.evidence}</p>
+          <p><strong style={{ color: 'var(--color-text)' }}>Action:</strong> {incident.action}</p>
+          <p><strong style={{ color: 'var(--color-text)' }}>Verification:</strong> {incident.result}</p>
         </div>
       )}
     </article>
   )
 }
 
-function SentinelPanel({ agentStatus, activeIncident, podCount, stableCount }) {
+function EventRow({ event }) {
   return (
-    <section className="rounded-md border p-3" style={{ borderColor: 'var(--color-border)', background: 'rgba(8, 13, 20, 0.68)' }}>
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-semibold">AI Sentinel</h3>
-          <p className="mt-1 text-xs" style={{ color: 'var(--color-muted)' }}>
-            {podCount} pods scanned. {stableCount} stable. {activeIncident ? `1 incident ${activeIncident.lifecycle}.` : 'No active incident.'}
-          </p>
+    <div className="event-row">
+      <span className="shrink-0 font-mono text-[11px]" style={{ color: 'var(--color-muted)' }}>{formatTime(event.timestamp)}</span>
+      <div className="min-w-0">
+        <div className="truncate text-xs">{eventText(event)}</div>
+        <div className="mt-0.5 truncate text-[11px]" style={{ color: 'var(--color-muted)' }}>
+          {event.podId} · {event.zone} · {event.reservoir}
         </div>
-        <span className="ai-pulse h-3 w-3 rounded-full" style={{ background: 'var(--color-info)' }} />
       </div>
-      <div className="mt-3 h-1.5 overflow-hidden rounded-full" style={{ background: 'var(--color-surface-2)' }}>
-        <div className="h-full rounded-full" style={{ width: `${agentStatus.cycleProgress}%`, background: 'linear-gradient(90deg, var(--color-info), var(--color-success))' }} />
-      </div>
-      <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]" style={{ color: 'var(--color-muted)' }}>
-        <span>Scanning <strong style={{ color: 'var(--color-text)' }}>{agentStatus.scanningPodId || '--'}</strong></span>
-        <span>Zone <strong style={{ color: 'var(--color-text)' }}>{agentStatus.scanningZone}</strong></span>
-        <span>Next check <strong style={{ color: 'var(--color-text)' }}>{agentStatus.nextCheckSeconds}s</strong></span>
-        <span>Verify <strong style={{ color: 'var(--color-text)' }}>{agentStatus.pendingVerification}</strong></span>
-      </div>
-    </section>
+    </div>
   )
 }
 
-export default function AgentLog({ entries = [], incidents = [], activeIncident, agentStatus, pods = {}, onIncidentSelect }) {
+function SectionTitle({ children }) {
+  return <h3 className="mb-1.5 text-xs font-semibold uppercase" style={{ color: 'var(--color-muted)' }}>{children}</h3>
+}
+
+export default function AgentLog({ entries = [], events = [], incidents = [], activeIncident, agentStatus, pods = {}, onIncidentSelect }) {
   const [expanded, setExpanded] = useState({})
   const podList = Object.values(pods)
   const stableCount = podList.filter((pod) => pod.status === 'healthy').length
   const activeIncidents = incidents.filter((incident) => incident.status === 'active')
   const recentResolved = incidents.filter((incident) => incident.status !== 'active').slice(0, 3)
+  const recentEvents = [...events].sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0)).slice(0, 8)
+  const backendEntry = entries[0]
 
   const toggle = (id) => setExpanded((current) => ({ ...current, [id]: !current[id] }))
 
   return (
-    <section className="flex h-full min-h-0 flex-col rounded-md border p-4" style={{ borderColor: 'var(--color-border-strong)', background: 'var(--color-surface)' }}>
-      <div className="mb-4 shrink-0">
+    <section className="operations-feed flex h-full min-h-0 flex-col rounded-md border" style={{ borderColor: 'var(--color-border-strong)', background: 'var(--color-surface)' }}>
+      <header className="shrink-0 border-b p-3" style={{ borderColor: 'var(--color-border)' }}>
         <h2 className="text-base font-semibold">Operations Feed</h2>
-        <p className="mt-1 text-xs" style={{ color: 'var(--color-muted)' }}>Incident-centered agent audit stream</p>
-      </div>
+        <p className="mt-1 text-xs" style={{ color: 'var(--color-muted)' }}>Live AI activity and incident audit</p>
+      </header>
 
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
-        <SentinelPanel agentStatus={agentStatus} activeIncident={activeIncident} podCount={podList.length} stableCount={stableCount} />
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+        <section>
+          <SectionTitle>Now</SectionTitle>
+          <AISentinelFeedItem agentStatus={agentStatus} activeIncident={activeIncident} podCount={podList.length} stableCount={stableCount} />
+          {backendEntry && (
+            <div className="mt-1.5 rounded-md px-2.5 py-1.5 text-xs leading-5" style={{ background: 'rgba(108, 195, 255, 0.08)', color: 'var(--color-muted)' }}>
+              {backendEntry.diagnosis || backendEntry.reasoning || 'Decision received'}
+            </div>
+          )}
+        </section>
 
         <section>
-          <h3 className="mb-2 text-xs font-semibold uppercase" style={{ color: 'var(--color-muted)' }}>Active Incidents</h3>
+          <SectionTitle>Active Incidents</SectionTitle>
           <div className="space-y-2">
             {activeIncidents.length ? activeIncidents.map((incident) => (
-              <IncidentCard
+              <IncidentFeedCard
                 key={incident.id}
                 incident={incident}
                 active={activeIncident?.id === incident.id}
@@ -127,26 +126,24 @@ export default function AgentLog({ entries = [], incidents = [], activeIncident,
                 onSelect={onIncidentSelect}
               />
             )) : (
-              <div className="rounded-md border p-3 text-sm" style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted)' }}>
-                No active incidents. Normal scans are summarized below.
-              </div>
+              <div className="feed-empty">No active incidents. Routine scans continue.</div>
             )}
           </div>
         </section>
 
         <section>
-          <h3 className="mb-2 text-xs font-semibold uppercase" style={{ color: 'var(--color-muted)' }}>System Summary</h3>
-          <div className="rounded-md border p-3 text-sm leading-6" style={{ borderColor: 'var(--color-border)', background: 'rgba(8, 13, 20, 0.58)', color: 'var(--color-muted)' }}>
-            {podList.length} pods scanned. {stableCount} stable. {activeIncidents.length} incident{activeIncidents.length === 1 ? '' : 's'} active. Last result: {agentStatus.lastResult}
+          <SectionTitle>Recent Events</SectionTitle>
+          <div className="space-y-1">
+            {recentEvents.map((event) => <EventRow key={event.id} event={event} />)}
           </div>
         </section>
 
         {recentResolved.length > 0 && (
           <section>
-            <h3 className="mb-2 text-xs font-semibold uppercase" style={{ color: 'var(--color-muted)' }}>Recent Resolved</h3>
+            <SectionTitle>Recent Resolved</SectionTitle>
             <div className="space-y-2">
               {recentResolved.map((incident) => (
-                <IncidentCard
+                <IncidentFeedCard
                   key={incident.id}
                   incident={incident}
                   active={false}
@@ -155,15 +152,6 @@ export default function AgentLog({ entries = [], incidents = [], activeIncident,
                   onSelect={onIncidentSelect}
                 />
               ))}
-            </div>
-          </section>
-        )}
-
-        {entries[0] && (
-          <section>
-            <h3 className="mb-2 text-xs font-semibold uppercase" style={{ color: 'var(--color-muted)' }}>Backend Agent</h3>
-            <div className="rounded-md border p-3 text-xs leading-5" style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted)' }}>
-              {entries[0].diagnosis || entries[0].reasoning || 'Decision received'}
             </div>
           </section>
         )}

@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import CropIcon from '../CropIcon'
-import PhysicalPot from './PhysicalPot'
-import { FAULT_TYPES, STATUS_ORDER, TARGET_RANGES, formatMetric, metricState, trendState } from '../../data/operations'
+import { FAULT_TYPES, STATUS_ORDER, TARGET_RANGES, formatMetric, metricState } from '../../data/operations'
 
 const STATUS_COLORS = {
   healthy: 'var(--color-success)',
@@ -11,349 +10,424 @@ const STATUS_COLORS = {
   verifying: 'var(--color-info)',
 }
 
-const SORT_OPTIONS = [
-  { value: 'status', label: 'Severity' },
-  { value: 'zone', label: 'Zone' },
-  { value: 'crop', label: 'Crop' },
-  { value: 'reservoir', label: 'Reservoir' },
-  { value: 'modified', label: 'Last sync' },
-]
+const SEARCH_KEYS = ['status', 'zone', 'crop', 'reservoir', 'metric', 'issue', 'sort']
+const METRIC_PRIORITY = ['ph', 'ec_ppm', 'water_level', 'flow_rate', 'air_temp_c', 'humidity', 'light_lux']
 
-function uniqueValues(pods, key) {
-  return [...new Set(pods.map((pod) => pod[key]).filter(Boolean))].sort()
+function normalize(value) {
+  return `${value ?? ''}`.trim().toLowerCase()
 }
 
-function ZoneHealthStrip({ pods, activeIncident }) {
+function friendlyStatus(status) {
+  if (status === 'recovering') return 'warning'
+  return status || 'healthy'
+}
+
+function timeLabel(timestamp) {
+  const date = timestamp ? new Date(timestamp) : new Date()
+  if (Number.isNaN(date.getTime())) return '--:--'
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+}
+
+function faultForPod(pod) {
+  return FAULT_TYPES.find((fault) => fault.id === pod.fault_type) || null
+}
+
+function metricLabel(metric) {
+  return TARGET_RANGES[metric]?.label || metric?.replaceAll('_', ' ') || 'Metric'
+}
+
+function metricText(pod, metric) {
+  const state = metricState(pod[metric], metric)
+  const arrow = state.state === 'ok' ? '' : state.delta < 0 ? ' ↓' : ' ↑'
+  return `${metricLabel(metric)} ${formatMetric(pod[metric], metric)}${arrow}`
+}
+
+function primaryDeviation(pod) {
+  const fault = faultForPod(pod)
+  const metric = fault?.metric || METRIC_PRIORITY.find((key) => metricState(pod[key], key).state !== 'ok') || 'ph'
+  const state = metricState(pod[metric], metric)
+  return { metric, state, fault }
+}
+
+function issueLabel(pod) {
+  if (friendlyStatus(pod.status) === 'healthy') return 'Healthy'
+  const deviation = primaryDeviation(pod)
+  if (deviation.fault) return `${friendlyStatus(pod.status)}: ${deviation.fault.label}`
+  return `${friendlyStatus(pod.status)}: ${metricLabel(deviation.metric)} ${deviation.state.text}`
+}
+
+function metricPair(pod) {
+  const deviation = primaryDeviation(pod)
+  if (friendlyStatus(pod.status) === 'healthy') return ['ph', 'ec_ppm']
+  const secondary = deviation.metric === 'ec_ppm' ? 'ph' : 'ec_ppm'
+  return [deviation.metric, secondary]
+}
+
+function statusRank(pod) {
+  return STATUS_ORDER[pod.status] ?? STATUS_ORDER.healthy
+}
+
+function defaultPodSort(a, b) {
+  const severity = statusRank(a) - statusRank(b)
+  if (severity !== 0) return severity
+  return new Date(b.timestamp || 0) - new Date(a.timestamp || 0)
+}
+
+function fuzzyIncludes(haystack, needle) {
+  const source = normalize(haystack)
+  const query = normalize(needle)
+  if (!query) return true
+  if (source.includes(query)) return true
+  let cursor = 0
+  for (const char of query) {
+    cursor = source.indexOf(char, cursor)
+    if (cursor === -1) return false
+    cursor += 1
+  }
+  return true
+}
+
+function parseSearch(query) {
+  const filters = {}
+  const structured = /(\w+):(?:"([^"]+)"|(\S+))/g
+  let free = query
+  for (const match of query.matchAll(structured)) {
+    const key = normalize(match[1])
+    if (SEARCH_KEYS.includes(key)) filters[key] = match[2] ?? match[3] ?? ''
+    free = free.replace(match[0], ' ')
+  }
+  return {
+    filters,
+    terms: free.split(/\s+/).map((term) => term.trim()).filter(Boolean),
+  }
+}
+
+function podHaystack(pod) {
+  const fault = faultForPod(pod)
+  const deviation = primaryDeviation(pod)
+  return [
+    pod.id,
+    pod.crop,
+    pod.zone,
+    pod.reservoir,
+    pod.status,
+    pod.lifecycle,
+    pod.severity,
+    pod.last_action,
+    fault?.label,
+    fault?.issue,
+    metricLabel(deviation.metric),
+    deviation.metric,
+  ].filter(Boolean).join(' ')
+}
+
+function matchesStructuredFilter(pod, filters) {
+  if (filters.status && friendlyStatus(pod.status) !== normalize(filters.status) && normalize(pod.lifecycle) !== normalize(filters.status)) return false
+  if (filters.zone && !fuzzyIncludes(pod.zone, filters.zone)) return false
+  if (filters.crop && !fuzzyIncludes(pod.crop, filters.crop)) return false
+  if (filters.reservoir && !fuzzyIncludes(pod.reservoir, filters.reservoir)) return false
+  if (filters.issue) {
+    const issue = `${issueLabel(pod)} ${faultForPod(pod)?.issue || ''}`
+    if (!fuzzyIncludes(issue, filters.issue)) return false
+  }
+  if (filters.metric) {
+    const rawMetric = normalize(filters.metric)
+    const metric = rawMetric === 'ec' ? 'ec_ppm' : rawMetric
+    const deviation = primaryDeviation(pod)
+    const isRelevant = normalize(deviation.metric) === metric || normalize(metricLabel(deviation.metric)) === metric
+    const isOutOfRange = metricState(pod[deviation.metric], deviation.metric).state !== 'ok'
+    if (!isRelevant || (!isOutOfRange && friendlyStatus(pod.status) === 'healthy')) return false
+  }
+  return true
+}
+
+function filterPods(pods, query) {
+  const parsed = parseSearch(query)
+  const sort = normalize(parsed.filters.sort) || 'severity'
+  const filtered = pods.filter((pod) => {
+    if (!matchesStructuredFilter(pod, parsed.filters)) return false
+    const haystack = podHaystack(pod)
+    return parsed.terms.every((term) => fuzzyIncludes(haystack, term))
+  })
+
+  if (sort === 'recent') return [...filtered].sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))
+  return [...filtered].sort(defaultPodSort)
+}
+
+function farmState(summary) {
+  if (summary.counts.critical > 0) return { label: 'Critical Attention', status: 'critical' }
+  if (summary.counts.warning > 0 || summary.counts.verifying > 0 || summary.counts.recovering > 0) return { label: 'Watch', status: 'warning' }
+  return { label: 'Operational', status: 'healthy' }
+}
+
+function FarmSummary({ summary, connectionStatus, policy, incidents }) {
+  const state = farmState(summary)
+  const activeIncidents = incidents.filter((incident) => incident.status === 'active').length
+  const stablePods = summary.counts.healthy || 0
+  const lastSync = timeLabel()
+  const metrics = [
+    ['Operational status', state.label],
+    ['Total pods', summary.pods],
+    ['Stable pods', stablePods],
+    ['Active incidents', activeIncidents],
+    ['Mode', policy.mode],
+    ['Connection', connectionStatus],
+    ['Last sync', lastSync],
+  ]
+
+  return (
+    <section className="app-panel dashboard-summary rounded-md p-3">
+      <div className="grid items-center gap-3 xl:grid-cols-[170px_1fr]">
+        <div className="min-w-0">
+          <div className="text-xs uppercase" style={{ color: 'var(--color-muted)' }}>Farm Health</div>
+          <div className="mt-1 flex items-center gap-2">
+            <span className="font-mono text-3xl font-semibold leading-none">{summary.healthScore}%</span>
+            <span className={`status-pill status-pill-small status-${state.status}`}>{state.label}</span>
+          </div>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          {metrics.map(([label, value]) => (
+            <div key={label} className="summary-metric">
+              <div className="truncate text-[10px] uppercase" style={{ color: 'var(--color-muted)' }}>{label}</div>
+              <div className="mt-0.5 truncate text-xs font-semibold sm:text-sm">{value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function ZoneStatusGrid({ pods }) {
   const zones = useMemo(() => {
     const grouped = pods.reduce((acc, pod) => {
       if (!acc[pod.zone]) acc[pod.zone] = []
       acc[pod.zone].push(pod)
       return acc
     }, {})
-    return Object.entries(grouped).map(([zone, zonePods]) => ({
-      zone,
-      pods: zonePods.length,
-      critical: zonePods.filter((pod) => pod.status === 'critical').length,
-      warning: zonePods.filter((pod) => pod.status === 'warning').length,
-      verifying: zonePods.filter((pod) => pod.status === 'verifying' || pod.status === 'recovering').length,
-    }))
+
+    return Object.entries(grouped).map(([zone, zonePods]) => {
+      const critical = zonePods.filter((pod) => pod.status === 'critical')
+      const warning = zonePods.filter((pod) => pod.status === 'warning' || pod.status === 'recovering')
+      const verifying = zonePods.filter((pod) => pod.status === 'verifying')
+      const lead = critical[0] || warning[0] || verifying[0] || null
+      const status = critical.length ? 'critical' : warning.length ? 'warning' : verifying.length ? 'verifying' : 'healthy'
+      return {
+        zone,
+        podCount: zonePods.length,
+        status,
+        issue: lead ? issueLabel(lead).replace(`${status}: `, '') : 'All readings in range',
+      }
+    }).sort((a, b) => (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9))
   }, [pods])
 
   return (
-    <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-      {zones.map((zone) => {
-        const active = activeIncident?.zone === zone.zone
-        const color = zone.critical ? 'var(--color-critical)' : zone.warning ? 'var(--color-warning)' : zone.verifying ? 'var(--color-info)' : 'var(--color-success)'
-        return (
-          <div key={zone.zone} className={`zone-strip ${active ? 'zone-strip-active' : ''}`}>
-            <div className="flex items-center justify-between gap-2">
-              <span className="truncate text-xs font-semibold">{zone.zone}</span>
-              <span className="text-[10px]" style={{ color: 'var(--color-muted)' }}>{zone.pods} pods</span>
+    <section>
+      <div className="mb-1.5 flex items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold">Zone Status</h2>
+        <span className="text-xs" style={{ color: 'var(--color-muted)' }}>{zones.length} zones</span>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {zones.map((zone) => (
+          <article key={zone.zone} className={`zone-status zone-status-${zone.status}`}>
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <h3 className="truncate text-sm font-semibold">{zone.zone}</h3>
+              <span className={`status-pill status-pill-small status-${zone.status}`}>{zone.status}</span>
             </div>
-            <div className="mt-2 h-1.5 rounded-full" style={{ background: color }} />
-          </div>
-        )
-      })}
-    </div>
+            <div className="mt-1.5 flex items-center justify-between gap-3 text-xs" style={{ color: 'var(--color-muted)' }}>
+              <span>{zone.podCount} pods</span>
+              <span className="truncate text-right">{zone.issue}</span>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
   )
 }
 
-function StatusHeader({ summary, connectionStatus, policy, pods, incidents, activeIncident, agentStatus }) {
-  const lastSync = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-  return (
-    <section className="grid gap-3 xl:grid-cols-[1.35fr_0.9fr]">
-      <div className="app-panel rounded-md p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-xs uppercase" style={{ color: 'var(--color-muted)' }}>Farm Health</div>
-            <div className="mt-1 flex items-end gap-3">
-              <span className="text-4xl font-semibold leading-none">{summary.healthScore}%</span>
-              <span className="mb-1 text-sm" style={{ color: 'var(--color-success)' }}>Operational</span>
-            </div>
-          </div>
-          <div className="grid h-16 w-16 place-items-center rounded-md border font-mono text-lg" style={{ borderColor: 'var(--color-success)', background: 'rgba(88, 214, 141, 0.12)', color: 'var(--color-success)' }}>
-            AI
-          </div>
-        </div>
-        <div className="mt-4 grid gap-2 text-xs sm:grid-cols-3" style={{ color: 'var(--color-muted)' }}>
-          <span>Mode: <strong style={{ color: 'var(--color-text)' }}>{policy.mode}</strong></span>
-          <span>Connection: <strong style={{ color: 'var(--color-text)' }}>{connectionStatus}</strong></span>
-          <span>Last sync: <strong style={{ color: 'var(--color-text)' }}>{lastSync}</strong></span>
-        </div>
-        <ZoneHealthStrip pods={pods} activeIncident={activeIncident} />
-      </div>
+function ActiveIncidentSummary({ incident, onIncidentSelect, onSelect }) {
+  const [acknowledged, setAcknowledged] = useState(false)
+  if (!incident || incident.status !== 'active') return null
 
-      <div className="grid gap-3">
-        <div className="app-panel rounded-md p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold">AI Sentinel</h2>
-              <p className="mt-1 text-xs" style={{ color: 'var(--color-muted)' }}>
-                Scanning {agentStatus.scanningPodId || '--'} in {agentStatus.scanningZone}
-              </p>
-            </div>
-            <span className="ai-pulse h-3 w-3 rounded-full" style={{ background: 'var(--color-info)' }} />
+  const status = incident.lifecycle === 'verifying' ? 'verifying' : incident.severity
+
+  return (
+    <section className="active-incident-banner active-incident-alert rounded-md border p-3" style={{ borderColor: 'rgba(108, 195, 255, 0.38)', background: 'rgba(108, 195, 255, 0.08)' }}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className={`status-pill status-pill-small status-${status}`}>{incident.lifecycle.replaceAll('_', ' ')}</span>
+            <h2 className="min-w-0 truncate text-sm font-semibold sm:text-base">{incident.title}</h2>
+            {acknowledged && <span className="text-xs" style={{ color: 'var(--color-muted)' }}>Acknowledged</span>}
           </div>
-          <div className="mt-4 h-2 overflow-hidden rounded-full" style={{ background: 'var(--color-surface-2)' }}>
-            <div className="h-full rounded-full" style={{ width: `${agentStatus.cycleProgress}%`, background: 'linear-gradient(90deg, var(--color-info), var(--color-success))' }} />
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs" style={{ color: 'var(--color-muted)' }}>
+            <span>{incident.podId}</span>
+            <span>{incident.crop}</span>
+            <span>{incident.zone}</span>
+            <span>{incident.reservoir}</span>
           </div>
-          <div className="mt-3 grid grid-cols-3 gap-2 text-xs" style={{ color: 'var(--color-muted)' }}>
-            <span>Next {agentStatus.nextCheckSeconds}s</span>
-            <span>Verify {agentStatus.pendingVerification}</span>
-            <span>{summary.activeInterventions} actions</span>
-          </div>
+          <p className="mt-1.5 max-w-4xl text-xs leading-5 sm:text-sm" style={{ color: 'var(--color-muted)' }}>
+            {incident.evidence}. {incident.action}. {incident.result}.
+          </p>
         </div>
-        <div className="grid grid-cols-4 gap-3">
-          {[
-            ['Pods', summary.pods],
-            ['Faults', summary.activeFaults],
-            ['Incidents', incidents.length],
-            ['Resolved', summary.resolvedToday],
-          ].map(([label, value]) => (
-            <div key={label} className="rounded-md border p-3" style={{ borderColor: 'var(--color-border)', background: 'rgba(8, 13, 20, 0.58)' }}>
-              <div className="text-[10px] uppercase" style={{ color: 'var(--color-muted)' }}>{label}</div>
-              <div className="mt-2 text-xl font-semibold">{value}</div>
-            </div>
-          ))}
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <button type="button" className="quiet-action" onClick={() => onSelect?.(incident.podId)}>View Pod</button>
+          <button type="button" className="quiet-action" onClick={() => onIncidentSelect?.(incident)}>View Evidence</button>
+          <button type="button" className="quiet-action" onClick={() => setAcknowledged(true)}>Acknowledge</button>
         </div>
       </div>
     </section>
   )
 }
 
-function FilterBar({ filters, setFilters, options, total, onSimulateFault, simulationMessage }) {
-  const update = (key, value) => setFilters((current) => ({ ...current, [key]: value }))
+function SmartPodSearch({ query, setQuery, total, visible, onSimulateFault, simulationMessage }) {
+  const [fault, setFault] = useState('ph_drop')
   return (
-    <section className="app-panel rounded-md p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        {[
-          ['status', ['all', 'critical', 'warning', 'recovering', 'verifying', 'healthy']],
-          ['crop', ['all', ...options.crops]],
-          ['zone', ['all', ...options.zones]],
-          ['reservoir', ['all', ...options.reservoirs]],
-          ['severity', ['all', 'critical', 'warning', 'normal']],
-        ].map(([key, values]) => (
-          <select
-            key={key}
-            value={filters[key]}
-            onChange={(event) => update(key, event.target.value)}
-            className="min-h-9 rounded-md border px-2 text-xs capitalize"
-            style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-            aria-label={`Filter by ${key}`}
-          >
-            {values.map((value) => <option key={value} value={value}>{key}: {value}</option>)}
-          </select>
-        ))}
-
+    <section className="app-panel smart-search-row rounded-md p-2">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <div className="min-w-[220px] flex-1">
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={'Search pods, crops, zones... try status:critical zone:"East Rack" crop:tomato'}
+            className="min-h-9 w-full rounded-md border px-3 text-sm"
+            style={{ background: 'rgba(8, 13, 20, 0.72)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            aria-label="Search pods"
+          />
+        </div>
+        <span className="rounded-md border px-2 py-1.5 text-xs" style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted)' }}>
+          {visible} of {total} visible
+        </span>
+        <details className="syntax-help">
+          <summary aria-label="Search syntax help">?</summary>
+          <div>
+            <span>status:critical</span>
+            <span>zone:"East Rack"</span>
+            <span>crop:tomato</span>
+            <span>reservoir:R-02</span>
+            <span>metric:ph</span>
+            <span>issue:humidity</span>
+            <span>sort:recent</span>
+          </div>
+        </details>
         <select
-          value={filters.sort}
-          onChange={(event) => update('sort', event.target.value)}
-          className="min-h-9 rounded-md border px-2 text-xs"
-          style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-          aria-label="Sort pods"
-        >
-          {SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>Sort: {option.label}</option>)}
-        </select>
-
-        <span className="ml-auto text-xs" style={{ color: 'var(--color-muted)' }}>{total} visible</span>
-
-        <select
-          value={filters.fault}
-          onChange={(event) => update('fault', event.target.value)}
+          value={fault}
+          onChange={(event) => setFault(event.target.value)}
           className="min-h-9 rounded-md border px-2 text-xs"
           style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
           aria-label="Fault type"
         >
-          {FAULT_TYPES.map((fault) => <option key={fault.id} value={fault.id}>{fault.label}</option>)}
+          {FAULT_TYPES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
         </select>
         <button
           type="button"
-          onClick={() => onSimulateFault(filters.fault)}
+          onClick={() => onSimulateFault(fault)}
           className="min-h-9 rounded-md border px-3 text-xs font-semibold"
-          style={{ borderColor: 'var(--color-critical)', background: 'rgba(255, 92, 122, 0.12)', color: 'var(--color-text)' }}
+          style={{ borderColor: 'rgba(255, 92, 122, 0.55)', background: 'rgba(255, 92, 122, 0.12)' }}
         >
           Simulate Fault
         </button>
-        <span className="text-xs" style={{ color: 'var(--color-warning)' }}>{simulationMessage}</span>
+        <span className="min-w-0 truncate text-xs" style={{ color: 'var(--color-warning)' }}>{simulationMessage}</span>
       </div>
     </section>
   )
 }
 
-function MetricChip({ pod, metric }) {
-  const state = metricState(pod[metric], metric)
-  const color = state.state === 'ok' ? 'var(--color-success)' : state.state === 'critical' ? 'var(--color-critical)' : 'var(--color-warning)'
-  return (
-    <div className="min-w-0 rounded-md border px-2 py-1.5" style={{ borderColor: 'var(--color-border)', background: 'rgba(8, 13, 20, 0.55)' }}>
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px]" style={{ color: 'var(--color-muted)' }}>{TARGET_RANGES[metric]?.label || metric}</span>
-        <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
-      </div>
-      <div className="mt-1 truncate font-mono text-xs font-semibold">{formatMetric(pod[metric], metric)}</div>
-      <div className="mt-0.5 truncate text-[10px]" style={{ color }}>{state.text}</div>
-    </div>
-  )
-}
-
-function TrendBar({ state }) {
-  const color = state === 'unstable' ? 'var(--color-critical)' : state === 'rising' || state === 'falling' ? 'var(--color-warning)' : 'var(--color-success)'
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="h-1.5 flex-1 rounded-full" style={{ background: color, opacity: state === 'falling' ? 0.45 : 1 }} />
-      <span className="h-1.5 flex-1 rounded-full" style={{ background: color, opacity: state === 'stable' ? 0.8 : 1 }} />
-      <span className="h-1.5 flex-1 rounded-full" style={{ background: color, opacity: state === 'rising' ? 1 : 0.45 }} />
-    </div>
-  )
-}
-
-function primaryDeviation(pod) {
-  const priority = ['ph', 'ec_ppm', 'water_level', 'air_temp_c', 'humidity']
-  const metric = priority.find((key) => metricState(pod[key], key).state !== 'ok') || 'ph'
-  const state = metricState(pod[metric], metric)
-  return { metric, state }
-}
-
-function PodCard({ pod, incident, active, onSelect }) {
+function PodCardCompact({ pod, incident, active, onSelect }) {
+  const status = friendlyStatus(pod.status)
   const accent = STATUS_COLORS[pod.status] || STATUS_COLORS.healthy
-  const trend = trendState(pod, 'ph')
-  const deviation = primaryDeviation(pod)
+  const metrics = metricPair(pod)
+  const quiet = status === 'healthy'
+
   return (
     <button
       type="button"
       onClick={() => onSelect?.(pod.id)}
-      className={`pod-card min-w-0 rounded-md border p-3 text-left transition-all duration-200 ${active ? 'pod-card-active' : ''}`}
-      style={{ borderColor: 'var(--color-border)', borderTopColor: accent, background: 'rgba(19, 28, 40, 0.82)' }}
+      className={`pod-card pod-card-compact ${quiet ? 'pod-card-quiet' : ''} ${active ? 'pod-card-active' : ''}`}
+      style={{ borderTopColor: accent }}
     >
-      <div className="mb-3 flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <CropIcon crop={pod.crop} className="h-5 w-5" />
+          <div className="flex min-w-0 items-center gap-1.5">
+            <CropIcon crop={pod.crop} className="h-4 w-4 shrink-0" />
             <span className="truncate text-sm font-semibold">{pod.id}</span>
           </div>
-          <div className="mt-1 truncate text-xs capitalize" style={{ color: 'var(--color-muted)' }}>{pod.crop} / {pod.zone}</div>
+          <div className="mt-1 truncate text-xs capitalize" style={{ color: 'var(--color-muted)' }}>{pod.crop} · {pod.zone}</div>
         </div>
-        <span className={`status-pill status-${pod.status}`}>{pod.status}</span>
+        <span className={`status-pill status-pill-small status-${status}`}>{status}</span>
       </div>
 
-      {incident && (
-        <div className="mb-3 rounded-md border px-2 py-1.5 text-xs" style={{ borderColor: 'var(--color-info)', background: 'rgba(108, 195, 255, 0.1)', color: 'var(--color-info)' }}>
-          Incident {incident.lifecycle.replaceAll('_', ' ')}
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 gap-2">
-        {['ph', 'ec_ppm', 'air_temp_c', 'humidity'].map((metric) => <MetricChip key={metric} pod={pod} metric={metric} />)}
+      <div className="mt-2 min-h-[18px] truncate text-xs font-semibold sm:text-sm" style={{ color: quiet ? 'var(--color-muted)' : accent }}>
+        {issueLabel(pod)}
       </div>
 
-      <div className="mt-3 rounded-md border p-2" style={{ borderColor: 'var(--color-border)', background: 'rgba(7, 11, 17, 0.6)' }}>
-        <div className="mb-1 flex items-center justify-between text-[10px] uppercase" style={{ color: 'var(--color-muted)' }}>
-          <span>{TARGET_RANGES[deviation.metric]?.label} {deviation.state.text}</span>
-          <span>{trend}</span>
-        </div>
-        <TrendBar state={trend} />
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs" style={{ color: 'var(--color-text)' }}>
+        {metrics.map((metric) => (
+          <span key={metric} className="font-mono">{metricText(pod, metric)}</span>
+        ))}
       </div>
 
-      <div className="mt-3 flex items-center justify-between gap-2 text-xs" style={{ color: 'var(--color-muted)' }}>
-        <span className="truncate">{pod.last_action || 'Stable'}</span>
+      <div className="mt-2 flex min-w-0 items-center justify-between gap-2 text-xs" style={{ color: 'var(--color-muted)' }}>
+        <span className="truncate">{incident ? `Incident ${incident.lifecycle.replaceAll('_', ' ')}` : pod.last_action || 'Stable'}</span>
         <span className="shrink-0">{pod.reservoir}</span>
       </div>
     </button>
   )
 }
 
-function sortPods(pods, sort) {
-  const list = [...pods]
-  if (sort === 'status') return list.sort((a, b) => (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9))
-  if (sort === 'modified') return list.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))
-  return list.sort((a, b) => `${a[sort] || ''}`.localeCompare(`${b[sort] || ''}`))
-}
-
-function ActiveIncidentBanner({ incident, onIncidentSelect }) {
-  if (!incident || incident.status !== 'active') return null
-  return (
-    <button
-      type="button"
-      onClick={() => onIncidentSelect?.(incident)}
-      className="active-incident-banner rounded-md border p-3 text-left"
-      style={{ borderColor: 'var(--color-info)', background: 'rgba(108, 195, 255, 0.1)' }}
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <div className="text-xs uppercase" style={{ color: 'var(--color-info)' }}>Active Incident</div>
-          <div className="mt-1 text-sm font-semibold">{incident.title}</div>
-          <div className="mt-1 text-xs" style={{ color: 'var(--color-muted)' }}>{incident.podId} / {incident.zone} / {incident.reservoir}</div>
-        </div>
-        <span className={`status-pill status-${incident.lifecycle === 'verifying' ? 'verifying' : incident.severity}`}>{incident.lifecycle}</span>
-      </div>
-    </button>
-  )
-}
-
-export default function PodGrid({ pods, summary, connectionStatus, onSelect, onSimulateFault, simulationMessage, policy, incidents = [], activeIncident, agentStatus, onIncidentSelect }) {
+export default function PodGrid({
+  pods,
+  summary,
+  connectionStatus,
+  onSelect,
+  onSimulateFault,
+  simulationMessage,
+  policy,
+  incidents = [],
+  activeIncident,
+  onIncidentSelect,
+}) {
+  const [query, setQuery] = useState('')
   const podList = useMemo(() => Object.values(pods), [pods])
-  const [filters, setFilters] = useState({
-    status: 'all',
-    crop: 'all',
-    zone: 'all',
-    reservoir: 'all',
-    severity: 'all',
-    sort: 'status',
-    fault: 'ph_drop',
-  })
-  const options = useMemo(() => ({
-    crops: uniqueValues(podList, 'crop'),
-    zones: uniqueValues(podList, 'zone'),
-    reservoirs: uniqueValues(podList, 'reservoir'),
-  }), [podList])
-  const visible = useMemo(() => sortPods(podList.filter((pod) => (
-    (filters.status === 'all' || pod.status === filters.status) &&
-    (filters.crop === 'all' || pod.crop === filters.crop) &&
-    (filters.zone === 'all' || pod.zone === filters.zone) &&
-    (filters.reservoir === 'all' || pod.reservoir === filters.reservoir) &&
-    (filters.severity === 'all' || pod.severity === filters.severity)
-  )), filters.sort), [filters, podList])
+  const visible = useMemo(() => filterPods(podList, query), [podList, query])
   const incidentByPod = useMemo(() => incidents.reduce((acc, incident) => {
     if (incident.status === 'active') acc[incident.podId] = incident
     return acc
   }, {}), [incidents])
 
   return (
-    <div className="flex h-full flex-col gap-4">
-      <StatusHeader
-        summary={summary}
-        connectionStatus={connectionStatus}
-        policy={policy}
-        pods={podList}
-        incidents={incidents}
-        activeIncident={activeIncident}
-        agentStatus={agentStatus}
-      />
-      <ActiveIncidentBanner incident={activeIncident} onIncidentSelect={onIncidentSelect} />
-      <FilterBar
-        filters={filters}
-        setFilters={setFilters}
-        options={options}
-        total={visible.length}
+    <div className="overview-dashboard flex h-full min-h-0 flex-col gap-3">
+      <FarmSummary summary={summary} connectionStatus={connectionStatus} policy={policy} incidents={incidents} />
+      <ZoneStatusGrid pods={podList} />
+      <ActiveIncidentSummary incident={activeIncident} onIncidentSelect={onIncidentSelect} onSelect={onSelect} />
+      <SmartPodSearch
+        query={query}
+        setQuery={setQuery}
+        total={podList.length}
+        visible={visible.length}
         onSimulateFault={onSimulateFault}
         simulationMessage={simulationMessage}
       />
 
-      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {/* <div className="md:col-span-2">
-            <PhysicalPot pods={pods} />
-          </div> */}
-          {visible.map((pod) => (
-            <PodCard
-              key={pod.id}
-              pod={pod}
-              incident={incidentByPod[pod.id]}
-              active={activeIncident?.podId === pod.id}
-              onSelect={onSelect}
-            />
-          ))}
-        </div>
-      </div>
+      <section className="min-h-0 flex-1 overflow-y-auto pr-1" aria-label="Pod overview grid">
+        {visible.length ? (
+          <div className="pod-grid-dense grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            {visible.map((pod) => (
+              <PodCardCompact
+                key={pod.id}
+                pod={pod}
+                incident={incidentByPod[pod.id]}
+                active={activeIncident?.podId === pod.id}
+                onSelect={onSelect}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-md border p-5 text-sm" style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted)' }}>
+            No pods match the current search.
+          </div>
+        )}
+      </section>
     </div>
   )
 }
