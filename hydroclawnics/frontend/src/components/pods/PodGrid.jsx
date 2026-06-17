@@ -57,6 +57,64 @@ function metricPair(pod) {
   return [deviation.metric, secondary]
 }
 
+function clamp(value, min = 0, max = 100) {
+  return Math.max(min, Math.min(max, value))
+}
+
+function recentMetricRange(pod, metric) {
+  const values = (pod.history || [])
+    .slice(-10)
+    .map((reading) => Number(reading[metric]))
+    .filter(Number.isFinite)
+
+  const current = Number(pod[metric])
+  if (Number.isFinite(current)) values.push(current)
+  if (!values.length) return null
+
+  values.sort((a, b) => a - b)
+  const lowIndex = Math.floor((values.length - 1) * 0.2)
+  const highIndex = Math.ceil((values.length - 1) * 0.8)
+  return {
+    low: values[lowIndex],
+    high: values[highIndex],
+  }
+}
+
+function metricScale(pod, metric) {
+  const range = TARGET_RANGES[metric]
+  const current = Number(pod[metric])
+  const recent = recentMetricRange(pod, metric)
+
+  if (range) {
+    return {
+      min: range.scaleMin,
+      max: range.scaleMax,
+      healthyMin: range.min,
+      healthyMax: range.max,
+      warningLow: range.min - (range.max - range.min) * 0.35,
+      warningHigh: range.max + (range.max - range.min) * 0.35,
+      criticalLow: range.min - (range.max - range.min) * 0.75,
+      criticalHigh: range.max + (range.max - range.min) * 0.75,
+      recent,
+      current,
+    }
+  }
+
+  const safeCurrent = Number.isFinite(current) ? current : 0
+  const spread = Math.max(Math.abs(safeCurrent) * 0.4, 1)
+  return {
+    min: safeCurrent - spread,
+    max: safeCurrent + spread,
+    recent,
+    current,
+  }
+}
+
+function positionInScale(value, scale) {
+  if (!Number.isFinite(value) || scale.max === scale.min) return 50
+  return clamp(((value - scale.min) / (scale.max - scale.min)) * 100)
+}
+
 function statusRank(pod) {
   return STATUS_ORDER[pod.status] ?? STATUS_ORDER.healthy
 }
@@ -283,11 +341,54 @@ function SmartPodSearch({ query, setQuery, total, visible, onSimulateFault, simu
   )
 }
 
+function MiniMetricRange({ pod, metric, emphasized }) {
+  const range = TARGET_RANGES[metric]
+  const scale = metricScale(pod, metric)
+  const state = metricState(pod[metric], metric)
+  const currentPosition = positionInScale(scale.current, scale)
+  const healthyLeft = range ? positionInScale(scale.healthyMin, scale) : null
+  const healthyRight = range ? positionInScale(scale.healthyMax, scale) : null
+  const recentLeft = scale.recent ? positionInScale(scale.recent.low, scale) : currentPosition
+  const recentRight = scale.recent ? positionInScale(scale.recent.high, scale) : currentPosition
+  const title = `${metricLabel(metric)} current ${formatMetric(pod[metric], metric)}${scale.recent ? `, recent range ${formatMetric(scale.recent.low, metric)} to ${formatMetric(scale.recent.high, metric)}` : ''}${range ? `, healthy range ${range.min} to ${range.max}${range.unit}` : ''}`
+  const markerClass = state.state === 'critical' ? 'metric-current metric-current-critical' : state.state === 'warning' ? 'metric-current metric-current-warning' : 'metric-current'
+
+  return (
+    <div className={`metric-range-row ${emphasized ? 'metric-range-row-emphasis' : ''}`} title={title} aria-label={title}>
+      <div className="min-w-0 truncate font-mono text-xs">{metricText(pod, metric)}</div>
+      <div className="metric-range-track" aria-hidden="true">
+        {range && (
+          <span
+            className="metric-healthy-window"
+            style={{ left: `${healthyLeft}%`, width: `${Math.max(2, healthyRight - healthyLeft)}%` }}
+          />
+        )}
+        {scale.recent && (
+          <span
+            className="metric-recent-range"
+            style={{ left: `${Math.min(recentLeft, recentRight)}%`, width: `${Math.max(3, Math.abs(recentRight - recentLeft))}%` }}
+          />
+        )}
+        {range && (
+          <>
+            <span className="metric-threshold metric-warning-marker" style={{ left: `${positionInScale(scale.warningLow, scale)}%` }} />
+            <span className="metric-threshold metric-warning-marker" style={{ left: `${positionInScale(scale.warningHigh, scale)}%` }} />
+            <span className="metric-threshold metric-critical-marker" style={{ left: `${positionInScale(scale.criticalLow, scale)}%` }} />
+            <span className="metric-threshold metric-critical-marker" style={{ left: `${positionInScale(scale.criticalHigh, scale)}%` }} />
+          </>
+        )}
+        <span className={markerClass} style={{ left: `${currentPosition}%` }} />
+      </div>
+    </div>
+  )
+}
+
 function PodCardCompact({ pod, incident, active, onSelect }) {
   const status = friendlyStatus(pod.status)
   const accent = STATUS_COLORS[pod.status] || STATUS_COLORS.healthy
   const metrics = metricPair(pod)
   const quiet = status === 'healthy'
+  const deviation = primaryDeviation(pod)
 
 return (
     <button
@@ -313,9 +414,9 @@ return (
             </div>
         )}
 
-        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs" style={{ color: 'var(--color-text)' }}>
+        <div className="mt-2 grid gap-1.5" style={{ color: 'var(--color-text)' }}>
             {metrics.map((metric) => (
-                <span key={metric} className="font-mono">{metricText(pod, metric)}</span>
+                <MiniMetricRange key={metric} pod={pod} metric={metric} emphasized={metric === deviation.metric && !quiet} />
             ))}
         </div>
 
