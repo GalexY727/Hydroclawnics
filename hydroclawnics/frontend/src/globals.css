@@ -430,6 +430,7 @@ a:focus-visible {
   height: 2px;
   border-radius: 999px;
   background: rgba(88, 214, 141, 0.35);
+  transition: left 420ms ease-out, width 420ms ease-out, opacity 220ms ease;
 }
 
 .metric-recent-range {
@@ -439,6 +440,7 @@ a:focus-visible {
   border-radius: 999px;
   background: rgba(152, 168, 183, 0.42);
   box-shadow: 0 0 0 1px rgba(8, 13, 20, 0.35);
+  transition: left 420ms ease-out, width 420ms ease-out, background 220ms ease;
 }
 
 .metric-threshold {
@@ -448,6 +450,7 @@ a:focus-visible {
   height: 8px;
   transform: translateX(-0.5px);
   border-radius: 999px;
+  transition: left 420ms ease-out, opacity 220ms ease;
 }
 
 .metric-warning-marker {
@@ -468,6 +471,7 @@ a:focus-visible {
   border-right: 4px solid transparent;
   border-top: 7px solid var(--color-info);
   filter: drop-shadow(0 0 5px rgba(108, 195, 255, 0.32));
+  transition: left 420ms cubic-bezier(0.2, 0.8, 0.2, 1), border-top-color 180ms ease, filter 180ms ease;
 }
 
 .metric-current-warning {
