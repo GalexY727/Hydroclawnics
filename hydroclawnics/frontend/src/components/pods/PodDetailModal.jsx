@@ -41,6 +41,22 @@ function timeLabel(timestamp) {
   return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
 
+function secondsAgoLabel(seconds) {
+  const safeSeconds = Math.max(0, Math.round(Number(seconds) || 0))
+  return `${safeSeconds} seconds ago`
+}
+
+function timeToken(seconds) {
+  const safeSeconds = Math.max(0, Math.round(Number(seconds) || 0))
+  return `t-${safeSeconds}s`
+}
+
+function secondsAgo(timestamp, fallbackSeconds) {
+  const date = timestamp ? new Date(timestamp) : null
+  if (!date || Number.isNaN(date.getTime())) return fallbackSeconds
+  return Math.max(0, Math.round((Date.now() - date.getTime()) / 1000))
+}
+
 function metricLabel(metric) {
   return TARGET_RANGES[metric]?.label || metric?.replaceAll('_', ' ') || 'Metric'
 }
@@ -168,7 +184,7 @@ function MiniRange({ pod, metric, emphasized }) {
 
 function TelemetryTable({ pod, selectedMetric, onMetricSelect }) {
   return (
-    <section className="detail-panel">
+    <section className="detail-panel detail-telemetry-panel">
       <div className="detail-section-heading">
         <h3>Telemetry</h3>
         <span>Current, target, recent range</span>
@@ -212,21 +228,27 @@ function TrendChart({ data, metric }) {
         <h3>{metricLabel(metric)} Trend</h3>
         <span>{data.length} recent samples</span>
       </div>
-      <div className="h-56 overflow-hidden">
+      <div className="detail-trend-chart overflow-hidden">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 12, right: 14, bottom: 10, left: 0 }}>
+          <LineChart data={data} margin={{ top: 8, right: 14, bottom: 18, left: 0 }}>
             <CartesianGrid stroke="rgba(148, 163, 184, 0.1)" vertical={false} />
-            <XAxis dataKey="index" hide />
+            <XAxis
+              dataKey="timeToken"
+              minTickGap={18}
+              tick={{ fill: 'var(--color-muted)', fontSize: 9 }}
+              tickLine={true}
+              axisLine={true}
+            />
             <YAxis
               width={48}
               tick={{ fill: 'var(--color-muted)', fontSize: 10 }}
               tickFormatter={(value) => compactNumber(value)}
-              axisLine={false}
-              tickLine={false}
+              axisLine={true}
+              tickLine={true}
             />
             <Tooltip
-              formatter={(value) => [formatMetricValue(value, metric, range), metricLabel(metric)]}
-              labelFormatter={(value) => `Sample ${value}`}
+              formatter={(value, _name) => [formatMetricValue(value, metric, range), _name]}
+              labelFormatter={(_value, items) => items?.[0]?.payload?.timeAgoLabel || ''}
               contentStyle={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 6, color: 'var(--color-text)' }}
             />
             <Line type="monotone" dataKey={metric} stroke={config.color} dot={false} strokeWidth={2.2} isAnimationActive={false} />
@@ -342,7 +364,20 @@ export default function PodDetailModal({ pod, events = [], agentLog = [], onManu
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [onClose])
 
-  const chartData = useMemo(() => (pod?.history || []).map((reading, index) => ({ ...reading, index })), [pod])
+  const chartData = useMemo(() => {
+    const readings = pod?.history || []
+    return readings.map((reading, index) => {
+      const fallbackSeconds = (readings.length - index - 1) * 240
+      const ageSeconds = secondsAgo(reading.timestamp, fallbackSeconds)
+      return {
+        ...reading,
+        index,
+        secondsAgo: ageSeconds,
+        timeAgoLabel: secondsAgoLabel(ageSeconds),
+        timeToken: timeToken(ageSeconds),
+      }
+    })
+  }, [pod])
   const podEvents = useMemo(() => events.filter((event) => event.podId === pod?.id), [events, pod?.id])
   const podAgentEntries = useMemo(() => agentLog.filter((entry) => entry.pod_id === pod?.id), [agentLog, pod?.id])
   const latestEvent = podEvents[0]
@@ -385,13 +420,12 @@ export default function PodDetailModal({ pod, events = [], agentLog = [], onManu
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
-            <div className="grid gap-4">
+          <div className="grid items-start gap-4 xl:grid-cols-[1.25fr_0.75fr]">
+            <div className="grid content-start gap-4">
               <TelemetryTable pod={pod} selectedMetric={selectedMetric} onMetricSelect={setSelectedMetric} />
               <TrendChart data={chartData} metric={selectedMetric} />
               <AgentAssessment pod={pod} latestEvent={latestEvent} podAgentEntries={podAgentEntries} />
             </div>
-
             <aside className="grid content-start gap-4">
               <section className="detail-panel">
                 <div className="detail-section-heading">
@@ -405,7 +439,7 @@ export default function PodDetailModal({ pod, events = [], agentLog = [], onManu
                   <span>DO: {formatMetricValue(pod.do_mg_l, 'do_mg_l', { unit: ' mg/L' })}</span>
                 </div>
               </section>
-              <Lifecycle pod={pod} podEvents={podEvents} />
+              {/* <Lifecycle pod={pod} podEvents={podEvents} /> */}
               <ManualControls pod={pod} onManualAction={onManualAction} />
             </aside>
           </div>

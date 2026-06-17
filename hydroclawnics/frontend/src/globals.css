@@ -608,10 +608,20 @@ a:focus-visible {
 .detail-telemetry-table {
   display: grid;
   gap: 1px;
-  overflow: visible;
+  max-height: 425px;
+  overflow-x: visible;
+  overflow-y: auto;
   border: 1px solid var(--color-border);
   border-radius: 6px;
   background: var(--color-border);
+}
+
+.detail-telemetry-panel {
+  align-self: start;
+}
+
+.detail-trend-chart {
+  height: 168px;
 }
 
 .detail-metric-row {
