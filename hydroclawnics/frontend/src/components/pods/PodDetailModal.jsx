@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import CropIcon from '../CropIcon'
 import PlantPreview from '../farm/PlantPreview'
-import { FAULT_TYPES, LIFECYCLE_STEPS, TARGET_RANGES } from '../../data/operations'
+import { FAULT_TYPES, TARGET_RANGES } from '../../data/operations'
 
 const ACTIONS = [
   { id: 'dose_acid', label: 'Dose acid', risk: 'Requires pH high confirmation' },
@@ -22,6 +22,15 @@ const METRICS = [
   { key: 'water_level', color: '#78d7ff' },
   { key: 'light_lux', color: '#f5d66b' },
 ]
+
+const TREND_ZONE_COLORS = {
+  stable: '#58d68d',
+  warning: '#f5b85b',
+  critical: '#ff5c7a',
+}
+
+const TREND_CHART_HEIGHT = 168
+const TREND_CHART_MARGIN = { top: 8, right: 14, bottom: 18, left: 0 }
 
 function normalize(value) {
   return `${value ?? ''}`.trim().toLowerCase()
@@ -150,6 +159,59 @@ function positionInScale(value, scale) {
   return clamp(((value - scale.min) / (scale.max - scale.min)) * 100)
 }
 
+function yOffsetInScale(value, scale) {
+  if (!Number.isFinite(value) || scale.max === scale.min) return 50
+  return clamp(((scale.max - value) / (scale.max - scale.min)) * 100)
+}
+
+function zoneColorForValue(value, scale) {
+  if (!Number.isFinite(value) || !scale) return TREND_ZONE_COLORS.stable
+  if (value < scale.criticalLow || value > scale.criticalHigh) return TREND_ZONE_COLORS.critical
+  if (value < scale.healthyMin || value > scale.healthyMax) return TREND_ZONE_COLORS.warning
+  return TREND_ZONE_COLORS.stable
+}
+
+function trendGradientStops(scale) {
+  if (!scale || !Number.isFinite(scale.min) || !Number.isFinite(scale.max) || scale.max === scale.min) return []
+
+  const stops = [
+    { offset: 0, color: zoneColorForValue(scale.max, scale) },
+    { offset: 100, color: zoneColorForValue(scale.min, scale) },
+  ]
+  const softEdge = 2.4
+  const boundaries = [
+    { value: scale.criticalHigh, highColor: TREND_ZONE_COLORS.critical, lowColor: TREND_ZONE_COLORS.warning },
+    { value: scale.healthyMax, highColor: TREND_ZONE_COLORS.warning, lowColor: TREND_ZONE_COLORS.stable },
+    { value: scale.healthyMin, highColor: TREND_ZONE_COLORS.stable, lowColor: TREND_ZONE_COLORS.warning },
+    { value: scale.criticalLow, highColor: TREND_ZONE_COLORS.warning, lowColor: TREND_ZONE_COLORS.critical },
+  ]
+
+  boundaries.forEach(({ value, highColor, lowColor }) => {
+    const offset = yOffsetInScale(value, scale)
+    if (offset <= 0 || offset >= 100) return
+    stops.push(
+      { offset: clamp(offset - softEdge), color: highColor },
+      { offset: clamp(offset + softEdge), color: lowColor },
+    )
+  })
+
+  return stops.sort((a, b) => a.offset - b.offset)
+}
+
+function safeIdToken(value) {
+  return `${value ?? 'metric'}`.replace(/[^a-zA-Z0-9_-]/g, '-')
+}
+
+function trendReferenceLines(scale) {
+  if (!scale) return []
+  return [
+    { key: 'min', y: scale.healthyMin, color: TREND_ZONE_COLORS.warning },
+    { key: 'max', y: scale.healthyMax, color: TREND_ZONE_COLORS.warning },
+    { key: 'critical-min', y: scale.criticalLow, color: TREND_ZONE_COLORS.critical },
+    { key: 'critical-max', y: scale.criticalHigh, color: TREND_ZONE_COLORS.critical },
+  ].filter(({ y }) => Number.isFinite(y) && y >= scale.min && y <= scale.max)
+}
+
 function markerLabel(label, value, metric, range) {
   return `${label}: ${formatMetricValue(value, metric, range)}`
 }
@@ -219,9 +281,23 @@ function TelemetryTable({ pod, selectedMetric, onMetricSelect }) {
   )
 }
 
-function TrendChart({ data, metric }) {
-  const range = TARGET_RANGES[metric]
+function TrendChart({ data, metric, pod }) {
+  const range = rangeForPod(pod, metric)
   const config = METRICS.find((item) => item.key === metric) || METRICS[0]
+  const dataValues = data.map((reading) => Number(reading[metric])).filter(Number.isFinite)
+  const baseScale = range ? metricScale(pod, metric) : null
+  const scale = baseScale && Number.isFinite(baseScale.min) && Number.isFinite(baseScale.max)
+    ? {
+        ...baseScale,
+        min: Math.min(baseScale.min, ...dataValues),
+        max: Math.max(baseScale.max, ...dataValues),
+      }
+    : null
+  const gradientId = `detail-trend-gradient-${safeIdToken(pod?.id)}-${safeIdToken(metric)}`
+  const gradientStops = trendGradientStops(scale)
+  const referenceLines = trendReferenceLines(scale)
+  const stroke = gradientStops.length ? `url(#${gradientId})` : config.color
+
   return (
     <section className="detail-panel">
       <div className="detail-section-heading">
@@ -230,7 +306,23 @@ function TrendChart({ data, metric }) {
       </div>
       <div className="detail-trend-chart overflow-hidden">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 8, right: 14, bottom: 18, left: 0 }}>
+          <LineChart data={data} margin={TREND_CHART_MARGIN}>
+            {gradientStops.length > 0 && (
+              <defs>
+                <linearGradient
+                  id={gradientId}
+                  x1="0"
+                  y1={TREND_CHART_MARGIN.top}
+                  x2="0"
+                  y2={TREND_CHART_HEIGHT - TREND_CHART_MARGIN.bottom}
+                  gradientUnits="userSpaceOnUse"
+                >
+                  {gradientStops.map((stop, index) => (
+                    <stop key={`${stop.offset}-${index}`} offset={`${stop.offset}%`} stopColor={stop.color} />
+                  ))}
+                </linearGradient>
+              </defs>
+            )}
             <CartesianGrid stroke="rgba(148, 163, 184, 0.1)" vertical={false} />
             <XAxis
               dataKey="timeToken"
@@ -243,15 +335,27 @@ function TrendChart({ data, metric }) {
               width={48}
               tick={{ fill: 'var(--color-muted)', fontSize: 10 }}
               tickFormatter={(value) => compactNumber(value)}
+              domain={scale ? [scale.min, scale.max] : undefined}
               axisLine={true}
               tickLine={true}
             />
+            {referenceLines.map(({ key, y, color }) => (
+              <ReferenceLine
+                key={key}
+                y={y}
+                stroke={color}
+                strokeDasharray="3 5"
+                strokeOpacity={0.42}
+                strokeWidth={1}
+                ifOverflow="extendDomain"
+              />
+            ))}
             <Tooltip
               formatter={(value, _name) => [formatMetricValue(value, metric, range), _name]}
               labelFormatter={(_value, items) => items?.[0]?.payload?.timeAgoLabel || ''}
               contentStyle={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 6, color: 'var(--color-text)' }}
             />
-            <Line type="monotone" dataKey={metric} stroke={config.color} dot={false} strokeWidth={2.2} isAnimationActive={false} />
+            <Line type="monotone" dataKey={metric} stroke={stroke} dot={false} strokeWidth={2.4} isAnimationActive={false} />
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -279,34 +383,6 @@ function AgentAssessment({ pod, latestEvent, podAgentEntries }) {
           <p><strong style={{ color: 'var(--color-text)' }}>Result:</strong> {latestEvent?.result || 'Awaiting verification'}</p>
         </div>
       )}
-    </section>
-  )
-}
-
-function Lifecycle({ pod, podEvents }) {
-  const activeIndex = Math.max(0, LIFECYCLE_STEPS.indexOf(pod.lifecycle))
-  return (
-    <section className="detail-panel">
-      <div className="detail-section-heading">
-        <h3>Timeline</h3>
-        <span className="capitalize">{pod.lifecycle?.replaceAll('_', ' ') || 'stable'}</span>
-      </div>
-      <div className="mt-3 grid gap-2">
-        {LIFECYCLE_STEPS.map((step, index) => {
-          const done = pod.lifecycle === 'resolved' || index <= activeIndex
-          const event = podEvents.find((item) => item.lifecycle === step)
-          return (
-            <div key={step} className="grid grid-cols-[16px_1fr_auto] items-start gap-2">
-              <span className="mt-1.5 h-2.5 w-2.5 rounded-full border" style={{ borderColor: done ? 'var(--color-info)' : 'var(--color-border)', background: done ? 'var(--color-info)' : 'transparent' }} />
-              <div className="min-w-0">
-                <div className="truncate text-xs font-semibold capitalize">{step.replaceAll('_', ' ')}</div>
-                <div className="truncate text-[11px]" style={{ color: 'var(--color-muted)' }}>{event?.result || (done ? 'Completed' : 'Pending')}</div>
-              </div>
-              <span className="text-[10px]" style={{ color: 'var(--color-muted)' }}>{event ? timeLabel(event.timestamp) : ''}</span>
-            </div>
-          )
-        })}
-      </div>
     </section>
   )
 }
@@ -378,9 +454,8 @@ export default function PodDetailModal({ pod, events = [], agentLog = [], onManu
       }
     })
   }, [pod])
-  const podEvents = useMemo(() => events.filter((event) => event.podId === pod?.id), [events, pod?.id])
   const podAgentEntries = useMemo(() => agentLog.filter((entry) => entry.pod_id === pod?.id), [agentLog, pod?.id])
-  const latestEvent = podEvents[0]
+  const latestEvent = useMemo(() => events.find((event) => event.podId === pod?.id), [events, pod?.id])
 
   if (!pod) return null
 
@@ -423,7 +498,7 @@ export default function PodDetailModal({ pod, events = [], agentLog = [], onManu
           <div className="grid items-start gap-4 xl:grid-cols-[1.25fr_0.75fr]">
             <div className="grid content-start gap-4">
               <TelemetryTable pod={pod} selectedMetric={selectedMetric} onMetricSelect={setSelectedMetric} />
-              <TrendChart data={chartData} metric={selectedMetric} />
+              <TrendChart data={chartData} metric={selectedMetric} pod={pod} />
               <AgentAssessment pod={pod} latestEvent={latestEvent} podAgentEntries={podAgentEntries} />
             </div>
             <aside className="grid content-start gap-4">
@@ -439,7 +514,6 @@ export default function PodDetailModal({ pod, events = [], agentLog = [], onManu
                   <span>DO: {formatMetricValue(pod.do_mg_l, 'do_mg_l', { unit: ' mg/L' })}</span>
                 </div>
               </section>
-              {/* <Lifecycle pod={pod} podEvents={podEvents} /> */}
               <ManualControls pod={pod} onManualAction={onManualAction} />
             </aside>
           </div>
