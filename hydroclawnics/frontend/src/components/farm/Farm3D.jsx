@@ -256,7 +256,7 @@ function SearchPanel({ value, matchCount, totalCount, statusText, onChange, onCl
           </button>
         )}
       </div>
-      <div>{value ? `${matchCount} of ${totalCount} shown` : 'Optional focus filter'}</div>
+  <div>{value ? `${matchCount} of ${totalCount} matched` : 'Optional focus filter'}</div>
       <div className="farm-search-status">{statusText}</div>
     </div>
   )

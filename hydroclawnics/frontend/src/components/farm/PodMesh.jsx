@@ -58,7 +58,24 @@ export default function PodMesh({ pod, onPodSelect, onViewFullPod, onPodHover, p
     plantGroup.traverse((child) => {
       if (child instanceof THREE.Mesh && child.material) {
         const materials = Array.isArray(child.material) ? child.material : [child.material]
-        materials.forEach((material) => {
+        // Clone any shared material before mutating so other pods that reuse
+        // cached materials don't get unintentionally dimmed.
+        const newMaterials = materials.map((material) => {
+          // If material is already unique to this mesh (has _isCloned flag), reuse it.
+          if (material._isCloned) return material
+          const cloned = material.clone()
+          cloned._isCloned = true
+          return cloned
+        })
+        // If original material was an array, replace the mesh materials with cloned array,
+        // otherwise set the single material.
+        if (Array.isArray(child.material)) {
+          child.material = newMaterials
+        } else {
+          child.material = newMaterials[0]
+        }
+
+        newMaterials.forEach((material) => {
           material.transparent = opacity < 1
           material.opacity = opacity
           material.needsUpdate = true
