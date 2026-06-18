@@ -17,7 +17,7 @@ function displayStatus(value) {
   return `${value || 'stable'}`.replaceAll('_', ' ')
 }
 
-export default function PodMesh({ pod, onPodSelect, onPodHover, podIndex = 0, active = false, selected = false, scanning = false, showFlowLines = false, dimmed = false }) {
+export default function PodMesh({ pod, onPodSelect, onViewFullPod, onPodHover, podIndex = 0, active = false, selected = false, scanning = false, showFlowLines = false, dimmed = false }) {
   const plantRef = useRef()
   const ringRef = useRef()
   const activeRingRef = useRef()
@@ -25,6 +25,7 @@ export default function PodMesh({ pod, onPodSelect, onPodHover, podIndex = 0, ac
   const hoverRingRef = useRef()
   const scanRef = useRef()
   const flowRef = useRef()
+  const hoverClearRef = useRef(null)
   const [hovered, setHovered] = useState(false)
   const isAlerted = pod.status === 'warning' || pod.status === 'critical' || pod.status === 'recovering' || pod.status === 'verifying'
   const stage = pod.stage ?? 1
@@ -66,6 +67,22 @@ export default function PodMesh({ pod, onPodSelect, onPodHover, podIndex = 0, ac
     })
   }, [dimmed, plantGroup])
 
+  useEffect(() => () => clearTimeout(hoverClearRef.current), [])
+
+  const showHover = () => {
+    clearTimeout(hoverClearRef.current)
+    setHovered(true)
+    onPodHover?.(pod.pod_id)
+  }
+
+  const hideHover = () => {
+    clearTimeout(hoverClearRef.current)
+    hoverClearRef.current = setTimeout(() => {
+      setHovered(false)
+      onPodHover?.(null)
+    }, 90)
+  }
+
   useFrame(({ clock }) => {
     const t = clock.elapsedTime
     const phase = podIndex * 1.3
@@ -106,8 +123,9 @@ export default function PodMesh({ pod, onPodSelect, onPodHover, podIndex = 0, ac
     <group
       position={pod.position}
       onClick={(event) => { event.stopPropagation(); onPodSelect?.(pod.pod_id, pod.position) }}
-      onPointerOver={(event) => { event.stopPropagation(); setHovered(true); onPodHover?.(pod.pod_id) }}
-      onPointerOut={() => { setHovered(false); onPodHover?.(null) }}
+      onDoubleClick={(event) => { event.stopPropagation(); onViewFullPod?.(pod.pod_id) }}
+      onPointerOver={(event) => { event.stopPropagation(); showHover() }}
+      onPointerOut={hideHover}
     >
       <group>
         <mesh position={[0, 0.04, 0]}>
@@ -159,7 +177,7 @@ export default function PodMesh({ pod, onPodSelect, onPodHover, podIndex = 0, ac
 
       <primitive ref={plantRef} object={plantGroup} />
 
-      {hovered && (
+      {hovered && !selected && (
         <Html position={[0, 1.85, 0]} center distanceFactor={8}>
           <div className="pod-tooltip">
             <strong>{pod.pod_id}</strong>
@@ -169,6 +187,7 @@ export default function PodMesh({ pod, onPodSelect, onPodHover, podIndex = 0, ac
           </div>
         </Html>
       )}
+
     </group>
   )
 }

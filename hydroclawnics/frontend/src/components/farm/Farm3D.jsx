@@ -66,15 +66,31 @@ function FarmInfrastructure({ mappedPods, showFlowLines }) {
   }, [mappedPods])
   const width = Math.max(8, bounds.maxX - bounds.minX + 3)
   const depth = Math.max(7, bounds.maxZ - bounds.minZ + 3)
-  const rows = Array.from(mappedPods.reduce((acc, pod) => {
-    const z = pod.position[2]
-    if (!acc.has(z)) acc.set(z, [])
-    acc.get(z).push(pod)
+  const islands = Array.from(mappedPods.reduce((acc, pod) => {
+    const key = pod.islandId || pod.group || pod.zone || 'Farm'
+    if (!acc.has(key)) {
+      acc.set(key, {
+        id: key,
+        center: pod.islandCenter || [pod.position[0], 0, pod.position[2]],
+        width: pod.islandWidth || 5,
+        depth: pod.islandDepth || 3.2,
+        zone: pod.zone || pod.group || 'Zone',
+        reservoirs: new Set(),
+        rows: new Map(),
+        hasAlert: false,
+      })
+    }
+    const island = acc.get(key)
+    if (pod.reservoir) island.reservoirs.add(pod.reservoir)
+    if (pod.status === 'critical' || pod.status === 'warning') island.hasAlert = true
+    const rowKey = pod.rowInIsland ?? 0
+    if (!island.rows.has(rowKey)) island.rows.set(rowKey, [])
+    island.rows.get(rowKey).push(pod)
     return acc
-  }, new Map()).entries()).map(([z, pods]) => ({
-    z,
-    zone: pods[0]?.zone || pods[0]?.group || 'Zone',
-    reservoirs: [...new Set(pods.map((pod) => pod.reservoir).filter(Boolean))],
+  }, new Map()).values()).map((island) => ({
+    ...island,
+    reservoirs: Array.from(island.reservoirs),
+    rows: Array.from(island.rows.entries()).map(([rowIndex, pods]) => ({ rowIndex, pods })),
   }))
 
   return (
@@ -84,28 +100,69 @@ function FarmInfrastructure({ mappedPods, showFlowLines }) {
         <meshStandardMaterial color="#0b111b" roughness={0.95} />
       </mesh>
 
-      {rows.map((row) => (
-        <group key={row.z}>
-          <mesh position={[0, 0.02, row.z]}>
-            <boxGeometry args={[width, 0.08, 0.16]} />
-            <meshStandardMaterial color="#31516b" roughness={0.72} metalness={0.15} />
-          </mesh>
-          {showFlowLines && (
-            <mesh position={[0, 0.03, row.z - 0.72]}>
-              <boxGeometry args={[width, 0.06, 0.06]} />
-              <meshStandardMaterial color="#6cc3ff" emissive="#1d6f9f" emissiveIntensity={0.22} />
+      {islands.map((island) => {
+        const [x, , z] = island.center
+        const borderColor = island.hasAlert ? '#f5b85b' : '#315f7a'
+        const label = `${island.zone}${island.reservoirs.length === 1 ? ` · ${island.reservoirs[0]}` : ''}`
+
+        return (
+          <group key={island.id}>
+            <mesh position={[x, 0, z]}>
+              <boxGeometry args={[island.width, 0.045, island.depth]} />
+              <meshStandardMaterial color="#101a27" roughness={0.9} metalness={0.08} opacity={0.88} transparent />
             </mesh>
-          )}
-          <Text position={[bounds.minX - 1.28, 0.14, row.z + 0.22]} rotation={[-Math.PI / 2, 0, 0]} fontSize={0.16} color="#9fb1c7" anchorX="left">
-            {row.zone}{row.reservoirs.length === 1 ? ` · ${row.reservoirs[0]}` : ''}
-          </Text>
-        </group>
-      ))}
+            <mesh position={[x, 0.04, z - island.depth / 2]}>
+              <boxGeometry args={[island.width, 0.045, 0.055]} />
+              <meshStandardMaterial color={borderColor} roughness={0.68} metalness={0.12} />
+            </mesh>
+            <mesh position={[x, 0.04, z + island.depth / 2]}>
+              <boxGeometry args={[island.width, 0.045, 0.055]} />
+              <meshStandardMaterial color={borderColor} roughness={0.68} metalness={0.12} />
+            </mesh>
+            <mesh position={[x - island.width / 2, 0.04, z]}>
+              <boxGeometry args={[0.055, 0.045, island.depth]} />
+              <meshStandardMaterial color={borderColor} roughness={0.68} metalness={0.12} />
+            </mesh>
+            <mesh position={[x + island.width / 2, 0.04, z]}>
+              <boxGeometry args={[0.055, 0.045, island.depth]} />
+              <meshStandardMaterial color={borderColor} roughness={0.68} metalness={0.12} />
+            </mesh>
+            <Text
+              position={[x - island.width / 2 + 0.34, 0.09, z - island.depth / 2 + 0.34]}
+              rotation={[-Math.PI / 2, 0, 0]}
+              fontSize={0.18}
+              color="#dcefff"
+              anchorX="left"
+              anchorY="middle"
+            >
+              {label}
+            </Text>
+            {island.rows.map((row) => {
+              const rowZ = row.pods[0]?.position[2] || z
+              const rowWidth = Math.max(2.5, (row.pods.length - 1) * 1.85 + 1.55)
+              return (
+                <group key={`${island.id}-${row.rowIndex}`}>
+                  <mesh position={[x, 0.025, rowZ]}>
+                    <boxGeometry args={[rowWidth, 0.045, 0.18]} />
+                    <meshStandardMaterial color="#26394e" roughness={0.82} metalness={0.12} opacity={0.68} transparent />
+                  </mesh>
+                  {showFlowLines && (
+                    <mesh position={[x, 0.055, rowZ - 0.55]}>
+                      <boxGeometry args={[rowWidth, 0.035, 0.045]} />
+                      <meshStandardMaterial color="#6cc3ff" emissive="#1d6f9f" emissiveIntensity={0.16} opacity={0.72} transparent />
+                    </mesh>
+                  )}
+                </group>
+              )
+            })}
+          </group>
+        )
+      })}
     </group>
   )
 }
 
-function Scene({ mappedPods, onPodSelect, onPodHover, onClearSelection, controls, agentEvents, activePodId, selectedPodId, scanPodId, showFlowLines, searchTerm, onAutoOrbitPodId }) {
+function Scene({ mappedPods, onPodSelect, onViewFullPod, onPodHover, onClearSelection, controls, agentEvents, activePodId, selectedPodId, scanPodId, showFlowLines, searchTerm, onAutoOrbitPodId }) {
   const { orbitRef, tick, autoRotateEnabled, mode, resetToCenter } = controls
   const lastAutoOrbitMs = useRef(0)
 
@@ -158,6 +215,7 @@ function Scene({ mappedPods, onPodSelect, onPodHover, onClearSelection, controls
           showFlowLines={showFlowLines}
           dimmed={!podMatchesSearch(pod, searchTerm)}
           onPodHover={onPodHover}
+          onViewFullPod={onViewFullPod}
           onPodSelect={(podId, position) => {
             controls.lastManualClickMs.current = Date.now()
             controls.selectPod(position)
@@ -179,7 +237,7 @@ function Scene({ mappedPods, onPodSelect, onPodHover, onClearSelection, controls
   )
 }
 
-function SearchPanel({ value, matchCount, totalCount, onChange, onClear }) {
+function SearchPanel({ value, matchCount, totalCount, statusText, onChange, onClear }) {
   return (
     <div className="farm-search-panel">
       <label htmlFor="farm-3d-search">Search</label>
@@ -199,11 +257,12 @@ function SearchPanel({ value, matchCount, totalCount, onChange, onClear }) {
         )}
       </div>
       <div>{value ? `${matchCount} of ${totalCount} shown` : 'Optional focus filter'}</div>
+      <div className="farm-search-status">{statusText}</div>
     </div>
   )
 }
 
-function ContextPanel({ mode, pod, mappedPods, activeFaults, latestEvent, scanPodId, latestPodEvent, latestPodNote, onViewFullPod, onClearSelection }) {
+function ContextPanel({ mode, pod, mappedPods, activeFaults, latestEvent, scanPodId, latestPodEvent, latestPodNote, fullPodInView, onViewFullPod, onClearSelection }) {
   if (pod) {
     const selected = mode === 'selected'
     return (
@@ -232,7 +291,7 @@ function ContextPanel({ mode, pod, mappedPods, activeFaults, latestEvent, scanPo
         )}
         {selected && (
           <div className="mt-3 flex flex-wrap gap-2">
-            <button type="button" className="farm-action-button" onClick={() => onViewFullPod(pod.pod_id)}>View Full Pod</button>
+            {!fullPodInView && <button type="button" className="farm-action-button" onClick={() => onViewFullPod(pod.pod_id)}>View Pod Info</button>}
             <button type="button" className="farm-action-button farm-action-button-muted" onClick={onClearSelection}>Clear</button>
           </div>
         )}
@@ -253,7 +312,7 @@ function ContextPanel({ mode, pod, mappedPods, activeFaults, latestEvent, scanPo
   )
 }
 
-export default function Farm3D({ pods, onPodSelect, onClose, agentEvents, events = [], activeIncident, scanPodId, isAutomationTab, autoTrackingPodId, onAutoOrbitPodId }) {
+export default function Farm3D({ pods, detailPodId, onPodSelect, onClose, agentEvents, events = [], activeIncident, scanPodId, isAutomationTab, autoTrackingPodId, onAutoOrbitPodId }) {
   const mappedPods = useFarm3D(pods)
   const controls = useCameraControls()
   const [selectedPodId, setSelectedPodId] = useState(null)
@@ -270,6 +329,8 @@ export default function Farm3D({ pods, onPodSelect, onClose, agentEvents, events
   const contextMode = selectedPod ? 'selected' : hoveredPod ? 'hover' : 'default'
   const contextEvent = contextPod ? eventForPod(events, contextPod.pod_id) : null
   const contextNote = contextPod ? agentNoteForPod(agentEvents, contextPod.pod_id) : ''
+  const trackingStatus = autoTrackingPodId ? `Auto-tracking: ${autoTrackingPodId}` : controls.mode === 'free' ? 'Free camera' : 'Pod focus'
+  const showSelectedPodAction = selectedPod && !detailPodId
   const clearSelectedPod = useCallback(() => {
     setSelectedPodId(null)
     setHoveredPodId(null)
@@ -287,6 +348,7 @@ export default function Farm3D({ pods, onPodSelect, onClose, agentEvents, events
           agentEvents={agentEvents}
           activePodId={activePodId}
           selectedPodId={selectedPodId}
+          onViewFullPod={onPodSelect}
           scanPodId={scanPodId}
           showFlowLines={showFlowLines}
           searchTerm={searchTerm}
@@ -294,7 +356,7 @@ export default function Farm3D({ pods, onPodSelect, onClose, agentEvents, events
         />
       </Canvas>
 
-      <div className="absolute left-4 top-4 max-w-md">
+      <div className="farm-left-stack absolute left-4 top-4 max-w-md">
         <ContextPanel
           mode={contextMode}
           pod={contextPod}
@@ -304,55 +366,58 @@ export default function Farm3D({ pods, onPodSelect, onClose, agentEvents, events
           scanPodId={scanPodId}
           latestPodEvent={contextEvent}
           latestPodNote={contextNote}
+          fullPodInView={Boolean(detailPodId)}
           onViewFullPod={onPodSelect}
           onClearSelection={clearSelectedPod}
         />
       </div>
 
-      <div className="farm-controls absolute right-3 top-3 flex flex-wrap justify-end gap-2">
-        <div className="farm-control-group">
-          <span>View</span>
-          {['top', 'angled'].map((preset) => (
-            <button key={preset} type="button" onClick={() => controls.setViewPreset(preset)}>{titleCase(preset)}</button>
-          ))}
+      <div className="farm-right-stack absolute right-3 top-3">
+        <div className="farm-controls flex flex-wrap justify-end gap-2">
+          <div className="farm-control-group">
+            <span>View</span>
+            {['top', 'angled'].map((preset) => (
+              <button key={preset} type="button" onClick={() => controls.setViewPreset(preset)}>{titleCase(preset)}</button>
+            ))}
+          </div>
+          <div className="farm-control-group">
+            <span>Overlays</span>
+            <button type="button" onClick={() => controls.setViewPreset('fault')}>Faults</button>
+            <button type="button" className={showFlowLines ? 'farm-control-active' : ''} onClick={() => setShowFlowLines((value) => !value)}>Flow lines</button>
+          </div>
+          <button type="button" className="farm-reset-button" onClick={() => controls.setViewPreset('reset')}>Reset</button>
+          {!isAutomationTab && onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="farm-close-button"
+              aria-label="Close 3D view"
+              title="Close 3D view"
+            >
+              X
+            </button>
+          )}
         </div>
-        <div className="farm-control-group">
-          <span>Overlays</span>
-          <button type="button" onClick={() => controls.setViewPreset('fault')}>Faults</button>
-          <button type="button" className={showFlowLines ? 'farm-control-active' : ''} onClick={() => setShowFlowLines((value) => !value)}>Flow lines</button>
-        </div>
-        <button type="button" className="farm-reset-button" onClick={() => controls.setViewPreset('reset')}>Reset</button>
-        {!isAutomationTab && onClose && (
-          <button
-            type="button"
-            onClick={onClose}
-            className="farm-close-button"
-            aria-label="Close 3D view"
-            title="Close 3D view"
-          >
-            X
-          </button>
-        )}
-      </div>
-
-      <div className="absolute bottom-3 right-3">
         <SearchPanel
           value={searchTerm}
           matchCount={searchMatchCount}
           totalCount={mappedPods.length}
+          statusText={trackingStatus}
           onChange={setSearchTerm}
           onClear={() => setSearchTerm('')}
         />
       </div>
 
-      <div className="absolute bottom-3 left-3 rounded-md border px-3 py-2 text-xs backdrop-blur" style={{ background: 'rgba(8, 13, 20, 0.72)', borderColor: 'var(--color-border)', color: 'var(--color-muted)' }}>
-        {autoTrackingPodId ? `Auto-tracking: ${autoTrackingPodId}` : controls.mode === 'free' ? 'Free camera' : 'Pod focus'}
-      </div>
-
       {controls.showHud && (
-        <div className="hud-chip absolute bottom-4 left-1/2 -translate-x-1/2 rounded-md border px-3 py-1 text-xs" style={{ background: 'var(--color-surface-2)', borderColor: 'var(--color-border)', color: 'var(--color-muted)' }}>
+        <div className={`hud-chip absolute ${showSelectedPodAction ? 'bottom-20' : 'bottom-4'} left-1/2 -translate-x-1/2 rounded-md border px-3 py-1 text-xs`} style={{ background: 'var(--color-surface-2)', borderColor: 'var(--color-border)', color: 'var(--color-muted)' }}>
           Free camera active
         </div>
+      )}
+
+      {showSelectedPodAction && (
+        <button type="button" className="pod-selected-action farm-selected-action-bar absolute bottom-4 left-1/2 -translate-x-1/2" onClick={() => onPodSelect(selectedPod.pod_id)}>
+            View Pod Info
+        </button>
       )}
     </div>
   )

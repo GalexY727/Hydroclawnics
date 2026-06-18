@@ -5,7 +5,7 @@ const DEFAULT_POS    = new THREE.Vector3(0, 9, 12)
 const DEFAULT_TARGET = new THREE.Vector3(0, 0, 0)
 const LERP           = 0.08
 const SETTLED        = 0.02
-const SPEED          = 0.075
+const SPEED          = 0.225
 const AUTO_ROTATE_IDLE_MS = 5000
 const DRAG_THRESHOLD_MS = 500
 
