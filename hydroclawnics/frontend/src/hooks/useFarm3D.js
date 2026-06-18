@@ -19,10 +19,20 @@ function gridColumns(count) {
 
 export default function useFarm3D(pods) {
   const list = Object.values(pods)
-  const cols = gridColumns(list.length)
-  return list.map((pod, idx) => {
-    const col = idx % cols
-    const row = Math.floor(idx / cols)
+  const grouped = list.reduce((acc, pod) => {
+    const group = pod.zone || pod.reservoir || 'Farm'
+    if (!acc.has(group)) acc.set(group, [])
+    acc.get(group).push(pod)
+    return acc
+  }, new Map())
+  const groups = Array.from(grouped.entries())
+  const maxCols = Math.max(gridColumns(list.length), ...groups.map(([, items]) => items.length))
+  const rowOffset = (groups.length - 1) / 2
+  let podIndex = 0
+
+  return groups.flatMap(([group, items], row) => items.map((pod, col) => {
+    const idx = podIndex
+    podIndex += 1
     return {
       pod_id: pod.id,
       crop: pod.crop,
@@ -39,8 +49,9 @@ export default function useFarm3D(pods) {
       age_hours: Number(pod.age_hours) || 0,
       stage: deriveStage(pod.age_hours),
       health: deriveHealth(pod.status),
+      group,
       podIndex: idx,
-      position: [(col - (cols - 1) / 2) * 2.45, 0, (row - 1) * 2.15],
+      position: [(col - (maxCols - 1) / 2) * 2.45, 0, (row - rowOffset) * 2.35],
     }
-  })
+  }))
 }
