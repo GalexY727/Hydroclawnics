@@ -169,23 +169,29 @@ async def on_tick(pods_payload: list[dict]) -> None:
 
 async def _autostart_table_loop(table_id: str, config) -> None:  # type: ignore[no-untyped-def]
     llm_client, _, table_runner = _agent_modules()
-    client = llm_client.build_async_client(config)
+    client = None
     while True:
         try:
+            if client is None:
+                client = llm_client.build_async_client(config)
             await table_runner._run_cycle(table_id, client, config)
         except Exception:
             logger.exception("Autostart table agent %s failed; retrying", table_id)
+            client = None
         await asyncio.sleep(config.table_interval_s)
 
 
 async def _autostart_supervisor_loop(config) -> None:  # type: ignore[no-untyped-def]
     llm_client, supervisor_runner, _ = _agent_modules()
-    client = llm_client.build_async_client(config)
+    client = None
     while True:
         try:
+            if client is None:
+                client = llm_client.build_async_client(config)
             await supervisor_runner._run_cycle(client, config)
         except Exception:
             logger.exception("Autostart supervisor failed; retrying")
+            client = None
         await asyncio.sleep(config.supervisor_interval_s)
 
 

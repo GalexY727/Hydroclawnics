@@ -75,8 +75,11 @@ class LLMConfig:
 
 def load_llm_config() -> LLMConfig:
     provider = _provider_from_env()
-    api_key = os.getenv("LLM_API_KEY") or os.getenv("NVIDIA_API_KEY")
-
+    explicit_api_key = os.getenv("LLM_API_KEY")
+    if provider == "nvidia" and explicit_api_key is None:
+        api_key = os.getenv("NVIDIA_API_KEY")
+    else:
+        api_key = explicit_api_key
     if provider == "none":
         default_base_url = None
         default_api_key = None
