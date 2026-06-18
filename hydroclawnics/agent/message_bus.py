@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -19,8 +20,18 @@ def _connect() -> sqlite3.Connection:
     return conn
 
 
+@contextmanager
+def _db():
+    conn = _connect()
+    try:
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def init_db() -> None:
-    with _connect() as conn:
+    with _db() as conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS directives (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,7 +64,7 @@ def _now() -> str:
 
 
 def write_directive(table_id: str, directive: dict) -> int:
-    with _connect() as conn:
+    with _db() as conn:
         cur = conn.execute(
             "INSERT INTO directives (table_id, directive, created_at) VALUES (?, ?, ?)",
             (table_id, json.dumps(directive), _now()),
@@ -62,7 +73,7 @@ def write_directive(table_id: str, directive: dict) -> int:
 
 
 def fetch_unread_directives(table_id: str) -> list[dict]:
-    with _connect() as conn:
+    with _db() as conn:
         rows = conn.execute(
             "SELECT id, directive FROM directives WHERE table_id=? AND consumed_at IS NULL ORDER BY id",
             (table_id,),
@@ -71,7 +82,7 @@ def fetch_unread_directives(table_id: str) -> list[dict]:
 
 
 def mark_directive_consumed(directive_id: int) -> None:
-    with _connect() as conn:
+    with _db() as conn:
         conn.execute(
             "UPDATE directives SET consumed_at=? WHERE id=?",
             (_now(), directive_id),
@@ -79,7 +90,7 @@ def mark_directive_consumed(directive_id: int) -> None:
 
 
 def write_table_report(table_id: str, report: dict) -> None:
-    with _connect() as conn:
+    with _db() as conn:
         conn.execute(
             "INSERT INTO table_reports (table_id, report, created_at) VALUES (?, ?, ?)",
             (table_id, json.dumps(report), _now()),
@@ -87,7 +98,7 @@ def write_table_report(table_id: str, report: dict) -> None:
 
 
 def get_latest_reports() -> dict[str, dict]:
-    with _connect() as conn:
+    with _db() as conn:
         rows = conn.execute("""
             SELECT t1.table_id, t1.report, t1.created_at
             FROM table_reports t1
@@ -109,7 +120,7 @@ def log_action(
     result: dict,
     reasoning: str | None = None,
 ) -> None:
-    with _connect() as conn:
+    with _db() as conn:
         conn.execute(
             "INSERT INTO agent_actions (ts, agent_type, table_id, tool, params, result, reasoning) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -118,7 +129,7 @@ def log_action(
 
 
 def get_recent_actions(n: int = 50) -> list[dict]:
-    with _connect() as conn:
+    with _db() as conn:
         rows = conn.execute(
             "SELECT * FROM agent_actions ORDER BY id DESC LIMIT ?", (n,)
         ).fetchall()
@@ -126,7 +137,7 @@ def get_recent_actions(n: int = 50) -> list[dict]:
 
 
 def get_supervisor_last_cycle() -> str | None:
-    with _connect() as conn:
+    with _db() as conn:
         row = conn.execute(
             "SELECT ts FROM agent_actions WHERE agent_type='supervisor' ORDER BY id DESC LIMIT 1"
         ).fetchone()
@@ -134,7 +145,7 @@ def get_supervisor_last_cycle() -> str | None:
 
 
 def get_table_last_cycles() -> dict[str, str]:
-    with _connect() as conn:
+    with _db() as conn:
         rows = conn.execute("""
             SELECT t1.table_id, t1.ts
             FROM agent_actions t1

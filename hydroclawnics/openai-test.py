@@ -1,28 +1,31 @@
-import os
+from __future__ import annotations
 
-from openai import OpenAI
+import asyncio
 
-client = OpenAI(
-  base_url = "https://integrate.api.nvidia.com/v1",
-  api_key = os.getenv("NVIDIA_API_KEY")
-)
+try:
+    from hydroclawnics.agent.llm_client import build_async_client, load_llm_config
+except ModuleNotFoundError:
+    from agent.llm_client import build_async_client, load_llm_config
 
 
-completion = client.chat.completions.create(
-  model="nvidia/nemotron-3-super-120b-a12b",
-  messages=[{"role":"user","content":"Hello world!"}],
-  temperature=1,
-  top_p=0.95,
-  max_tokens=16384,
-  extra_body={"chat_template_kwargs":{"enable_thinking":True},"reasoning_budget":16384},
-  stream=True
-)
+async def main() -> None:
+    config = load_llm_config()
+    client = build_async_client(config)
+    print(f"provider={config.provider} model={config.model_for('supervisor')}")
 
-for chunk in completion:
-  if not chunk.choices:
-    continue
-  reasoning = getattr(chunk.choices[0].delta, "reasoning_content", None)
-  if reasoning:
-    print(reasoning, end="")
-  if chunk.choices[0].delta.content is not None:
-    print(chunk.choices[0].delta.content, end="")
+    if client is None:
+        print("LLM_PROVIDER=none; skipping hosted inference call.")
+        return
+
+    response = await client.chat.completions.create(
+        model=config.model_for("supervisor"),
+        messages=[{"role": "user", "content": "Reply with one short Hydroclawnics status line."}],
+        temperature=0.2,
+        max_tokens=120,
+        **config.request_options(),
+    )
+    print(response.choices[0].message.content or "")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

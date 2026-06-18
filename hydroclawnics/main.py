@@ -12,9 +12,13 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-import agent_bridge
-import state
-from simulator import SENSORS_FILE, SimulatorEngine, inject_fault
+try:
+    from hydroclawnics import agent_bridge, state
+    from hydroclawnics.simulator import SENSORS_FILE, SimulatorEngine, inject_fault
+except ModuleNotFoundError:
+    import agent_bridge
+    import state
+    from simulator import SENSORS_FILE, SimulatorEngine, inject_fault
 
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
@@ -61,6 +65,23 @@ engine = SimulatorEngine()
 clients: set[WebSocket] = set()
 client_locks: dict[WebSocket, asyncio.Lock] = {}
 bridge_task: asyncio.Task | None = None
+agent_tasks: list[asyncio.Task] = []
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    import os
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _agent_modules():
+    try:
+        from hydroclawnics.agent import llm_client, supervisor_runner, table_runner
+    except ModuleNotFoundError:
+        from agent import llm_client, supervisor_runner, table_runner
+    return llm_client, supervisor_runner, table_runner
 
 
 def _apply_agent_tool_to_pod(tool: str, params: dict) -> bool:
@@ -97,7 +118,10 @@ def _apply_agent_tool_to_pod(tool: str, params: dict) -> bool:
     else:
         return False
 
-    from simulator import compute_status
+    try:
+        from hydroclawnics.simulator import compute_status
+    except ModuleNotFoundError:
+        from simulator import compute_status
     pod.status = compute_status(pod)
     if pod.status == "healthy":
         pod.fault_type = "none"
@@ -119,7 +143,10 @@ def remove_client(client: WebSocket) -> None:
 async def broadcast(message: dict) -> None:
     if not clients:
         return
-    from agent.action_log import safe_json_serialize, validate_event
+    try:
+        from hydroclawnics.agent.action_log import safe_json_serialize, validate_event
+    except ModuleNotFoundError:
+        from agent.action_log import safe_json_serialize, validate_event
     stale: list[WebSocket] = []
     payload_obj = validate_event(message) if message.get("type") in {
         "agent_cycle_summary", "pod_agent_update", "agent_action",
@@ -140,12 +167,71 @@ async def on_tick(pods_payload: list[dict]) -> None:
     await broadcast({"type": "pod_update", "pods": pods_payload})
 
 
+async def _autostart_table_loop(table_id: str, config) -> None:  # type: ignore[no-untyped-def]
+    llm_client, _, table_runner = _agent_modules()
+    client = None
+    while True:
+        try:
+            if client is None:
+                client = llm_client.build_async_client(config)
+            await table_runner._run_cycle(table_id, client, config)
+        except Exception:
+            logger.exception("Autostart table agent %s failed; retrying", table_id)
+            client = None
+        await asyncio.sleep(config.table_interval_s)
+
+
+async def _autostart_supervisor_loop(config) -> None:  # type: ignore[no-untyped-def]
+    llm_client, supervisor_runner, _ = _agent_modules()
+    client = None
+    while True:
+        try:
+            if client is None:
+                client = llm_client.build_async_client(config)
+            await supervisor_runner._run_cycle(client, config)
+        except Exception:
+            logger.exception("Autostart supervisor failed; retrying")
+            client = None
+        await asyncio.sleep(config.supervisor_interval_s)
+
+
+def _maybe_start_demo_agents() -> None:
+    if agent_tasks:
+        return
+    try:
+        llm_client, _, table_runner = _agent_modules()
+        config = llm_client.load_llm_config()
+        should_start = _env_bool("DEMO_AUTOSTART_AGENTS", config.demo_mode)
+        if not should_start:
+            return
+        table_ids = sorted(table_runner.CROP_MAP)
+        for table_id in table_ids:
+            agent_tasks.append(asyncio.create_task(
+                _autostart_table_loop(table_id, config),
+                name=f"demo-table-{table_id}",
+            ))
+        agent_tasks.append(asyncio.create_task(
+            _autostart_supervisor_loop(config),
+            name="demo-supervisor",
+        ))
+        logger.info(
+            "Autostarted %d demo agent task(s) with provider=%s",
+            len(agent_tasks),
+            config.provider,
+        )
+    except Exception:
+        logger.exception("Demo agent autostart failed")
+
+
 @app.on_event("startup")
 async def startup_event() -> None:
     global bridge_task
     engine.add_listener(on_tick)
     await engine.start()
-    from agent import message_bus as _mb
+    try:
+        from hydroclawnics.agent import message_bus as _mb
+    except ModuleNotFoundError:
+        from agent import message_bus as _mb
     _mb.init_db()
 
     async def bridge_broadcast(entry: dict) -> None:
@@ -153,12 +239,15 @@ async def startup_event() -> None:
         await broadcast({"type": "agent_decision", "entry": entry})
 
     bridge_task = asyncio.create_task(agent_bridge.tail_decisions(bridge_broadcast), name="decision-tail")
+    _maybe_start_demo_agents()
 
 
 @app.on_event("shutdown")
 async def shutdown_event() -> None:
     if bridge_task:
         bridge_task.cancel()
+    for task in agent_tasks:
+        task.cancel()
     await engine.stop()
 
 
@@ -240,7 +329,10 @@ async def post_fault(pod_id: str, body: FaultRequest) -> dict:
 
 @app.post("/api/sensor_data/{pod_id}")
 async def post_sensor_data(pod_id: str, body: SensorDataRequest) -> dict:
-    from simulator import compute_status
+    try:
+        from hydroclawnics.simulator import compute_status
+    except ModuleNotFoundError:
+        from simulator import compute_status
     for pod in engine.pods:
         if pod.id == pod_id:
             pod.ph = body.ph
@@ -271,7 +363,10 @@ async def post_action(request: Request) -> dict:
             if tool != "no_op" and isinstance(params, dict) and _apply_agent_tool_to_pod(tool, params):
                 await _publish_engine_snapshot()
         if entry.get("type") == "pod_agent_update":
-            from agent import action_log as _alog
+            try:
+                from hydroclawnics.agent import action_log as _alog
+            except ModuleNotFoundError:
+                from agent import action_log as _alog
             await _alog.remember_pod_action(entry)
         await broadcast(entry)
     else:
@@ -282,7 +377,10 @@ async def post_action(request: Request) -> dict:
 @app.get("/agent/status")
 async def agent_status() -> dict:
     import os as _os
-    from agent import message_bus as _mb
+    try:
+        from hydroclawnics.agent import message_bus as _mb
+    except ModuleNotFoundError:
+        from agent import message_bus as _mb
     pods_per_table = max(1, int(_os.getenv("PODS_PER_TABLE", "100")))
     total_pods = len(engine.pods)
     table_count = max(1, math.ceil(total_pods / pods_per_table))
@@ -306,13 +404,19 @@ async def agent_status() -> dict:
 
 @app.get("/agent/logs")
 async def agent_logs() -> list[dict]:
-    from agent import message_bus as _mb
+    try:
+        from hydroclawnics.agent import message_bus as _mb
+    except ModuleNotFoundError:
+        from agent import message_bus as _mb
     return _mb.get_recent_actions(50)
 
 
 @app.get("/agent/pod/{pod_id}/reasoning")
 async def pod_reasoning(pod_id: str) -> dict:
-    from agent import action_log as _alog
+    try:
+        from hydroclawnics.agent import action_log as _alog
+    except ModuleNotFoundError:
+        from agent import action_log as _alog
     return await _alog.get_pod_reasoning(pod_id)
 
 

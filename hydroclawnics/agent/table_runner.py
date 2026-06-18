@@ -4,7 +4,6 @@ import argparse
 import asyncio
 import json
 import logging
-import os
 import re
 import time
 from datetime import datetime, timezone
@@ -14,6 +13,7 @@ from openai import AsyncOpenAI
 
 from . import action_log as alog
 from . import message_bus, sensor_poller, sim_bridge
+from .llm_client import LLMConfig, build_async_client, load_llm_config
 from .tool_registry import as_openai_tools, execute_tool
 
 logging.basicConfig(
@@ -103,10 +103,6 @@ ACTIONS:
 
 No paragraphs. No hypotheticals. Just the format above, then immediately terminate your response.\
 """
-
-_TABLE_AGENT_MODEL = os.getenv("TABLE_AGENT_MODEL", "nvidia/nemotron-3-nano-30b-a3b")
-_TABLE_INTERVAL_S = int(os.getenv("TABLE_INTERVAL_S", "20"))
-_NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
 _CROP_TARGETS: dict[str, dict[str, tuple[float, float]]] = {
     "lettuce": {
@@ -399,7 +395,12 @@ def parse_agent_response(response_text: str) -> dict:
         return default
 
 
-async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
+async def _run_cycle(
+    table_id: str,
+    client: AsyncOpenAI | None = None,
+    config: LLMConfig | None = None,
+) -> None:
+    config = config or load_llm_config()
     cycle_start = time.monotonic()
     reading = sensor_poller.read_table(table_id)
     if reading is None:
@@ -418,74 +419,88 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
     actions_taken: list[dict] = []
     reasoning_text = ""
     cycle_id = str(uuid4())
+    parsed: dict = {"pod_id": table_id, "status": reading.status, "observations": [], "actions": []}
+    used_llm = client is not None
 
-    for _ in range(5):  # max 5 agentic rounds
-        response = await client.chat.completions.create(
-            model=_TABLE_AGENT_MODEL,
-            messages=messages,
-            temperature=0.2,
-            max_tokens=1500,
-            stop=["\n\n\n", "## Zone", "User:", "<|endoftext|>"],
-        )
-        if response.choices[0].finish_reason == "length":
-            logger.warning("[%s] API truncated response (finish_reason=length)", table_id)
-            # We don't wipe the reasoning text anymore just because it was long
-            # reasoning_text = ""
-            # break
-        msg = response.choices[0].message
-        assistant_msg: dict = {"role": "assistant"}
-        if msg.content is not None:
-            assistant_msg["content"] = msg.content
-        if msg.tool_calls:
-            assistant_msg["tool_calls"] = [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+    if client is None:
+        logger.info("[%s] Using deterministic table policy (LLM_PROVIDER=%s)", table_id, config.provider)
+    else:
+        try:
+            for _ in range(5):  # max 5 agentic rounds
+                request_kwargs = {
+                    "model": config.model_for("table"),
+                    "messages": messages,
+                    "temperature": 0.2,
+                    "max_tokens": 1500,
+                    "stop": ["\n\n\n", "## Zone", "User:", "<|endoftext|>"],
+                    **config.request_options(),
                 }
-                for tc in msg.tool_calls
-            ]
-        messages.append(assistant_msg)
+                if config.supports_tools:
+                    request_kwargs["tools"] = tools
+                    request_kwargs["tool_choice"] = "auto"
+                response = await client.chat.completions.create(**request_kwargs)
+                if response.choices[0].finish_reason == "length":
+                    logger.warning("[%s] API truncated response (finish_reason=length)", table_id)
+                msg = response.choices[0].message
+                assistant_msg: dict = {"role": "assistant"}
+                if msg.content is not None:
+                    assistant_msg["content"] = msg.content
+                if msg.tool_calls:
+                    assistant_msg["tool_calls"] = [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                        }
+                        for tc in msg.tool_calls
+                    ]
+                messages.append(assistant_msg)
 
-        if msg.content:
-            reasoning_text = msg.content
+                if msg.content:
+                    reasoning_text = msg.content
 
-        if not msg.tool_calls:
-            break
+                if not msg.tool_calls:
+                    break
 
-        tool_results = []
-        for tc in msg.tool_calls:
-            params = json.loads(tc.function.arguments)
-            params.setdefault("pod_id", table_id)
+                tool_results = []
+                for tc in msg.tool_calls:
+                    params = json.loads(tc.function.arguments or "{}")
+                    params.setdefault("pod_id", table_id)
 
-            result = execute_tool(tc.function.name, params)
-            action = alog.sanitize_action({
-                "pod_id": table_id,
-                "pod_id": params.get("pod_id") or table_id,
-                "tool": tc.function.name,
-                "params": params,
-                "result": result,
-                "reason": reasoning_text or "",
-                "status": reading.status,
-                "cycle_id": cycle_id,
-            })
-            # Log each tool call for detailed audit trail
-            alog.log(
-                agent_type="table",
-                table_id=table_id,
-                tool=action["tool"],
-                params=action["params"],
-                result=result,
-                reasoning=action["reason"] or None,
+                    result = execute_tool(tc.function.name, params)
+                    action = alog.sanitize_action({
+                        "pod_id": params.get("pod_id") or table_id,
+                        "tool": tc.function.name,
+                        "params": params,
+                        "result": result,
+                        "reason": reasoning_text or f"Applied {tc.function.name} to correct out-of-range readings.",
+                        "status": reading.status,
+                        "cycle_id": cycle_id,
+                    })
+                    # Log each tool call for detailed audit trail
+                    alog.log(
+                        agent_type="table",
+                        table_id=table_id,
+                        tool=action["tool"],
+                        params=action["params"],
+                        result=result,
+                        reasoning=action["reason"] or None,
+                    )
+                    actions_taken.append(action)
+                    tool_results.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": json.dumps(result),
+                    })
+
+                messages.extend(tool_results)
+        except Exception as exc:
+            logger.exception(
+                "[%s] LLM cycle failed with provider=%s; using deterministic fallback",
+                table_id,
+                config.provider,
             )
-            actions_taken.append(action)
-            tool_results.append({
-                "role": "tool",
-                "tool_call_id": tc.id,
-                "content": json.dumps(result),
-            })
-
-        messages.extend(tool_results)
+            reasoning_text = f"LLM unavailable ({type(exc).__name__}); deterministic policy handled the cycle."
 
     if actions_taken:
         # Tools were called — text summary is for logging only; actions are already recorded.
@@ -508,6 +523,8 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
             logger.warning("[%s] Agent response looked truncated; treating cycle as no_op", table_id)
             reasoning_text = "all parameters within range"
             parsed = {"pod_id": table_id, "status": reading.status, "observations": [], "actions": []}
+        elif not used_llm:
+            parsed = {"pod_id": table_id, "status": reading.status, "observations": [], "actions": []}
         else:
             parsed = parse_agent_response(reasoning_text)
             if parsed.get("status") not in ("healthy", "warning", "critical"):
@@ -522,7 +539,6 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
                 params.setdefault("pod_id", table_id)
                 result = execute_tool(tool_name, params)
                 action = alog.sanitize_action({
-                    "pod_id": table_id,
                     "pod_id": params.get("pod_id") or table_id,
                     "tool": tool_name,
                     "params": params,
@@ -567,7 +583,6 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
         actions_taken = [
             alog.sanitize_action({
                 "pod_id": table_id,
-                "pod_id": table_id,
                 "tool": "no_op",
                 "params": {},
                 "reason": observation_summary,
@@ -611,29 +626,26 @@ async def _run_cycle(table_id: str, client: AsyncOpenAI) -> None:
 
 
 async def main(table_id: str) -> None:
-    api_key = os.getenv("NVIDIA_API_KEY")
-    if not api_key:
-        raise EnvironmentError(
-            "NVIDIA_API_KEY is required. Set it in your environment or .env file."
-        )
-
+    config = load_llm_config()
     message_bus.init_db()
     sim_bridge.start_background_tick()
 
-    client = AsyncOpenAI(base_url=_NVIDIA_BASE_URL, api_key=api_key)
+    client = build_async_client(config)
     logger.info(
-        "Table agent %s ready (model=%s, interval=%ds)",
+        "Table agent %s ready (provider=%s, model=%s, interval=%ds, demo_mode=%s)",
         table_id,
-        _TABLE_AGENT_MODEL,
-        _TABLE_INTERVAL_S,
+        config.provider,
+        config.model_for("table"),
+        config.table_interval_s,
+        config.demo_mode,
     )
 
     while True:
         try:
-            await _run_cycle(table_id, client)
+            await _run_cycle(table_id, client, config)
         except Exception:
             logger.exception("[%s] Cycle error", table_id)
-        await asyncio.sleep(_TABLE_INTERVAL_S)
+        await asyncio.sleep(config.table_interval_s)
 
 
 if __name__ == "__main__":

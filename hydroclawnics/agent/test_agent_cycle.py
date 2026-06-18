@@ -6,14 +6,13 @@ Exit codes: 0 = pass, 1 = fail.
 Run from the hydroclawnics/ directory:
     python -m agent.test_agent_cycle
 
-Requirements:
-    NVIDIA_API_KEY env var must be set.
+Defaults to LLM_PROVIDER=none and exercises the deterministic fallback policy.
+Set LLM_PROVIDER=ollama, nvidia, or openai to smoke-test a real provider.
 """
 from __future__ import annotations
 
 import asyncio
 import json
-import os
 import sys
 import time
 from pathlib import Path
@@ -58,16 +57,10 @@ def _write_fake_pods() -> None:
 
 
 async def _run() -> int:
-    from openai import AsyncOpenAI
-
     from . import action_log as alog
     from . import message_bus, sim_bridge
+    from .llm_client import build_async_client, load_llm_config
     from .table_runner import _run_cycle
-
-    api_key = os.getenv("NVIDIA_API_KEY")
-    if not api_key:
-        print("[FAIL] NVIDIA_API_KEY is not set")
-        return 1
 
     _write_fake_pods()
     message_bus.init_db()
@@ -87,7 +80,9 @@ async def _run() -> int:
         zone.plant_status, zone.fault_type = sim_bridge._evaluate_zone(zone)
         print(f"[setup] {pod_id} ({crop}): plant_status={zone.plant_status}, fault_type={zone.fault_type}")
 
-    client = AsyncOpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=api_key)
+    config = load_llm_config()
+    client = build_async_client(config)
+    print(f"[setup] provider={config.provider}, model={config.model_for('table')}")
 
     # Run the critical zone's cycle and verify tool use
     print("\n[test] Running agent cycle for T4 (spinach — critical ec_high) …")
@@ -99,7 +94,7 @@ async def _run() -> int:
         snapshot_len = sum(1 for _ in alog.LOG_FILE.open())
 
     try:
-        await asyncio.wait_for(_run_cycle("T4", client), timeout=60.0)
+        await asyncio.wait_for(_run_cycle("T4", client, config), timeout=60.0)
     except asyncio.TimeoutError:
         print("[FAIL] Agent cycle timed out after 60 s")
         return 1

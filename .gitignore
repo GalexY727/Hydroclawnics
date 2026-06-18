@@ -155,7 +155,11 @@ pod_states.json
 
 # Agent SQLite DB and runtime data
 hydroclawnics/db/
+hydroclawnics/memory/*
+!hydroclawnics/memory/.gitkeep
+hydroclawnics/sensors/pod_states.json
 *.db
+*.sqlite
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
