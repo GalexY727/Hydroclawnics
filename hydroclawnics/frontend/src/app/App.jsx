@@ -375,6 +375,7 @@ export default function App() {
         <div style={farmStyle}>
           <Farm3D
             pods={pods}
+            detailPodId={detailPodId}
             onPodSelect={setDetailPodId}
             onClose={() => setTab('overview')}
             agentEvents={podAgentUpdates}
