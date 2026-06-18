@@ -5,12 +5,13 @@ import json
 import logging
 import math
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 try:
     from hydroclawnics import state
@@ -51,6 +52,12 @@ class SensorDataRequest(BaseModel):
     ec_ppm: float
     temp_c: float
     light_lux: float
+
+
+class AnalyticsChatRequest(BaseModel):
+    question: str
+    context: dict[str, Any] = Field(default_factory=dict)
+    history: list[dict[str, str]] = Field(default_factory=list)
 
 
 app = FastAPI(title="Hydroclawnics")
@@ -376,6 +383,14 @@ async def agent_status() -> dict:
         from hydroclawnics.agent import message_bus as _mb
     except ModuleNotFoundError:
         from agent import message_bus as _mb
+    try:
+        llm_client, _, _ = _agent_modules()
+        config = llm_client.load_llm_config()
+        supervisor_model = config.model_for("supervisor")
+        llm_provider = config.provider
+    except Exception:
+        supervisor_model = "unknown"
+        llm_provider = "unknown"
     pods_per_table = max(1, int(_os.getenv("PODS_PER_TABLE", "100")))
     total_pods = len(engine.pods)
     table_count = max(1, math.ceil(total_pods / pods_per_table))
@@ -394,6 +409,8 @@ async def agent_status() -> dict:
         "hardware_mode": _os.getenv("HARDWARE_MODE", "false").lower() == "true",
         "db_path": str(_mb.DB_PATH),
         "total_tables": table_count,
+        "llm_provider": llm_provider,
+        "supervisor_model": supervisor_model,
     }
 
 
@@ -404,6 +421,69 @@ async def agent_logs() -> list[dict]:
     except ModuleNotFoundError:
         from agent import message_bus as _mb
     return _mb.get_recent_actions(50)
+
+
+@app.post("/api/analytics/chat")
+async def analytics_chat(body: AnalyticsChatRequest) -> dict:
+    llm_client, _, _ = _agent_modules()
+    config = llm_client.load_llm_config()
+    model = config.model_for("supervisor")
+    question = body.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Question is required")
+
+    if config.is_mock:
+        raise HTTPException(
+            status_code=503,
+            detail="No connected supervisor model is configured. Set LLM_PROVIDER and SUPERVISOR_MODEL to enable analytics chat.",
+        )
+
+    client = llm_client.build_async_client(config)
+    if client is None:
+        raise HTTPException(status_code=503, detail="Supervisor model client is unavailable")
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are the Hydroclawnics supervisor agent. Answer analytics questions about crop trends, "
+                "possible sensor or control errors, recurring incident patterns, and crop stability. Be concise, "
+                "specific, and operational. If crop stability is unhealthy, name the problem and the affected crop. "
+                "Use short paragraphs and bullets when they make the answer easier to scan."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                "Current analytics context:\n"
+                f"{json.dumps(body.context, ensure_ascii=True)}"
+            ),
+        },
+    ]
+    for item in body.history[-8:]:
+        role = item.get("role", "")
+        content = item.get("content", "")
+        if role in {"user", "assistant"} and content:
+            messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": question})
+
+    try:
+        response = await client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0.2,
+            max_tokens=420,
+            **config.request_options(),
+        )
+        reply = response.choices[0].message.content if response.choices else ""
+        if not reply:
+            raise HTTPException(status_code=502, detail="Supervisor model returned an empty response")
+        return {"reply": reply, "model": model, "provider": config.provider}
+    except Exception as exc:
+        if isinstance(exc, HTTPException):
+            raise
+        logger.exception("Analytics chat failed")
+        raise HTTPException(status_code=502, detail="Supervisor model request failed") from exc
 
 
 @app.get("/agent/pod/{pod_id}/reasoning")

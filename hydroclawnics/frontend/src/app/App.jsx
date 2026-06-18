@@ -112,64 +112,320 @@ function AuditLog({ events, pods, incidents, onIncidentSelect }) {
   )
 }
 
-function AnalyticsPage({ pods, events, incidents }) {
-  const computed = useMemo(() => buildAnalytics(pods, events), [events, pods])
+function ChatText({ text }) {
+  const blocks = text.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean)
+  if (!blocks.length) return null
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <section className="app-panel rounded-md p-4">
-          <h1 className="text-xl font-semibold">Analytics</h1>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {[
-              ['Farm health', `${computed.healthScore}%`],
-              ['Active faults', computed.activeFaults],
-              ['Incidents', computed.incidentCount],
-              ['Resolved', computed.resolved],
-              ['Avg recovery', `${computed.avgRecoveryMin} min`],
-              ['Success rate', `${computed.successRate}%`],
-              ['Sensor reliability', `${computed.sensorReliability}%`],
-            ].map(([label, value]) => (
-              <div key={label} className="rounded-md border p-4" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
-                <div className="text-xs uppercase" style={{ color: 'var(--color-muted)' }}>{label}</div>
-                <div className="mt-2 text-2xl font-semibold">{value}</div>
-              </div>
-            ))}
-          </div>
-        </section>
+    <div className="mt-2 space-y-3 text-sm leading-6">
+      {blocks.map((block, blockIndex) => {
+        const lines = block.split('\n').map((line) => line.trim()).filter(Boolean)
+        const isList = lines.length > 1 && lines.every((line) => /^[-*]\s+/.test(line) || /^\d+[.)]\s+/.test(line))
+        if (isList) {
+          return (
+            <ul key={`${blockIndex}-${block}`} className="list-disc space-y-1 pl-5">
+              {lines.map((line) => (
+                <li key={line}>{line.replace(/^[-*]\s+/, '').replace(/^\d+[.)]\s+/, '')}</li>
+              ))}
+            </ul>
+          )
+        }
+        return <p key={`${blockIndex}-${block}`} className="whitespace-pre-wrap">{block}</p>
+      })}
+    </div>
+  )
+}
 
-        <section className="app-panel rounded-md p-4">
-          <h2 className="text-base font-semibold">Recurring Patterns</h2>
-          <div className="mt-4 space-y-3">
-            {[
-              `${incidents.filter((incident) => incident.status === 'active').length} incident(s) currently active`,
-              'pH drift clusters in tomato reservoir R-01',
-              'Humidity lows repeat after afternoon venting',
-            ].map((item, index) => (
-              <div key={item} className="flex items-center gap-3 rounded-md border p-3" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
-                <span className="grid h-8 w-8 place-items-center rounded-md font-mono text-sm" style={{ background: 'var(--color-surface-2)', color: 'var(--color-info)' }}>{index + 1}</span>
-                <span className="text-sm" style={{ color: 'var(--color-muted)' }}>{item}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="app-panel rounded-md p-4 xl:col-span-2">
-          <h2 className="text-base font-semibold">Stability By Crop</h2>
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-            {computed.byCrop.map((row) => (
-              <div key={row.crop} className="rounded-md border p-3" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
-                <div className="capitalize">{row.crop}</div>
-                <div className="mt-3 space-y-2 text-sm" style={{ color: 'var(--color-muted)' }}>
-                  <div className="flex justify-between"><span>Avg pH</span><strong>{row.ph}</strong></div>
-                  <div className="flex justify-between"><span>Avg EC</span><strong>{row.ec}</strong></div>
-                  <div className="flex justify-between"><span>Faults</span><strong>{row.faults}</strong></div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+function ChatBubble({ message }) {
+  const isUser = message.role === 'user'
+  return (
+    <article className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+      <div
+        className="max-w-[min(780px,92%)] rounded-md border px-4 py-3 shadow-sm"
+        style={{
+          borderColor: isUser ? 'rgba(108, 195, 255, 0.42)' : 'var(--color-border)',
+          background: isUser ? 'rgba(108, 195, 255, 0.1)' : 'var(--color-surface)',
+        }}
+      >
+        <div className="flex items-center justify-between gap-3 text-xs font-semibold uppercase" style={{ color: isUser ? 'var(--color-info)' : 'var(--color-muted)' }}>
+          <span>{isUser ? 'You' : 'Supervisor'}</span>
+          {message.model && <span className="normal-case" style={{ color: 'var(--color-muted)' }}>{message.model}</span>}
+        </div>
+        <ChatText text={message.content} />
       </div>
+    </article>
+  )
+}
+
+function AnalyticsPage({ pods, events, incidents }) {
+  const computed = useMemo(() => buildAnalytics(pods, events), [events, pods])
+  const cropStability = useMemo(() => computed.byCrop.map((row) => {
+    const cropIncidents = incidents.filter((incident) => incident.crop === row.crop && incident.status === 'active')
+    const activeProblem = cropIncidents[0]
+    const state = row.faults > 0 || activeProblem ? 'attention' : 'healthy'
+    return {
+      ...row,
+      state,
+      summary: state === 'healthy'
+        ? `Healthy. Average pH ${row.ph}, average EC ${row.ec}, and no active crop faults.`
+        : `${row.faults} pod(s) need attention${activeProblem ? `: ${activeProblem.title} on ${activeProblem.podId}` : ''}.`,
+    }
+  }), [computed.byCrop, incidents])
+  const patterns = useMemo(() => {
+    const activeCount = incidents.filter((incident) => incident.status === 'active').length
+    const reservoirCounts = incidents.reduce((acc, incident) => {
+      const key = `${incident.crop} / ${incident.reservoir}`
+      acc[key] = (acc[key] || 0) + 1
+      return acc
+    }, {})
+    const recurringReservoir = Object.entries(reservoirCounts)
+      .sort((a, b) => b[1] - a[1])
+      .find(([, count]) => count > 1)
+    const items = [
+      `${activeCount} incident(s) currently active`,
+      recurringReservoir ? `${recurringReservoir[0]} has repeated incident history` : 'No reservoir has more than one recent incident',
+      incidents.some((incident) => incident.title.toLowerCase().includes('ph')) ? 'pH drift appears in recent incident evidence' : 'pH is not the leading recent pattern',
+      incidents.some((incident) => incident.title.toLowerCase().includes('humidity')) ? 'Humidity recovery is under verification' : 'Humidity is not showing repeated incident pressure',
+    ]
+    return items
+  }, [incidents])
+  const chatContext = useMemo(() => ({
+    analytics: computed,
+    patterns,
+    cropStability,
+    incidents: incidents.slice(0, 6).map((incident) => ({
+      title: incident.title,
+      podId: incident.podId,
+      crop: incident.crop,
+      zone: incident.zone,
+      reservoir: incident.reservoir,
+      status: incident.status,
+      lifecycle: incident.lifecycle,
+      severity: incident.severity,
+      evidence: incident.evidence,
+      action: incident.action,
+      result: incident.result,
+    })),
+  }), [computed, cropStability, incidents, patterns])
+  const exampleQuestions = useMemo(() => {
+    const activeIncident = incidents.find((incident) => incident.status === 'active')
+    const recentIncident = incidents[0]
+    return [
+      activeIncident
+        ? `What is the likely cause of ${activeIncident.title} on ${activeIncident.podId}?`
+        : 'Do any recent incidents suggest a hidden problem?',
+      'Which recurring pattern should I fix first?',
+      'Are any crop groups unhealthy right now?',
+      recentIncident
+        ? `Could ${recentIncident.title} be a sensor error?`
+        : 'Do the trends look like sensor error or real crop stress?',
+    ]
+  }, [incidents])
+  const [messages, setMessages] = useState([])
+  const [draft, setDraft] = useState('')
+  const [isSending, setIsSending] = useState(false)
+  const [chatError, setChatError] = useState('')
+  const [modelLabel, setModelLabel] = useState('Supervisor agent')
+  const transcriptRef = useRef(null)
+  const draftRef = useRef(null)
+  const hasUserMessage = messages.some((message) => message.role === 'user')
+
+  useEffect(() => {
+    let mounted = true
+    fetch('/agent/status')
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => {
+        if (mounted && data?.supervisor_model) {
+          setModelLabel(`Supervisor agent / ${data.supervisor_model}`)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  useEffect(() => {
+    const transcript = transcriptRef.current
+    if (!transcript) return
+    window.requestAnimationFrame(() => {
+      transcript.scrollTo({ top: transcript.scrollHeight, behavior: 'smooth' })
+    })
+  }, [messages, isSending])
+
+  const sendQuestion = useCallback(async (question) => {
+    const text = question.trim()
+    if (!text || isSending) return
+    const userMessage = { id: `${Date.now()}-user`, role: 'user', content: text }
+    setMessages((current) => [...current, userMessage])
+    setDraft('')
+    setChatError('')
+    setIsSending(true)
+    try {
+      const response = await fetch('/api/analytics/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: text,
+          context: chatContext,
+          history: messages.map(({ role, content }) => ({ role, content })),
+        }),
+      })
+      if (!response.ok) {
+        const errorPayload = await response.json().catch(() => ({}))
+        throw new Error(errorPayload.detail || 'Supervisor chat request failed')
+      }
+      const data = await response.json()
+      setModelLabel(data.model ? `Supervisor agent / ${data.model}` : 'Supervisor agent')
+      setMessages((current) => [
+        ...current,
+        {
+          id: `${Date.now()}-assistant`,
+          role: 'assistant',
+          content: data.reply || 'I could not produce an answer from the current analytics context.',
+          model: data.model,
+        },
+      ])
+    } catch (error) {
+      setChatError(error.message || 'The supervisor chat is unavailable.')
+    } finally {
+      setIsSending(false)
+      window.requestAnimationFrame(() => draftRef.current?.focus())
+    }
+  }, [chatContext, isSending, messages])
+
+  const handleSubmit = useCallback((event) => {
+    event.preventDefault()
+    sendQuestion(draft)
+  }, [draft, sendQuestion])
+
+  const handleDraftKeyDown = useCallback((event) => {
+    event.stopPropagation()
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      sendQuestion(draft)
+    }
+  }, [draft, sendQuestion])
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden">
+      <section className="app-panel flex min-h-0 flex-1 flex-col rounded-md">
+        <header className="border-b p-4" style={{ borderColor: 'var(--color-border)' }}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h1 className="text-xl font-semibold">Analytics Chat</h1>
+              <p className="mt-1 text-sm" style={{ color: 'var(--color-muted)' }}>{modelLabel}</p>
+            </div>
+            <div className="rounded-md border px-3 py-2 text-sm" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
+              Health {computed.healthScore}% / {computed.activeFaults} active fault(s)
+            </div>
+          </div>
+        </header>
+
+        <div ref={transcriptRef} className="min-h-0 flex-1 overflow-y-auto p-4">
+          <div className="mx-auto flex max-w-5xl flex-col gap-4">
+            <article className="max-w-4xl rounded-md border p-4 shadow-sm" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase" style={{ color: 'var(--color-info)' }}>
+                <span>Supervisor</span>
+                <span style={{ color: 'var(--color-muted)' }}>current analytics snapshot</span>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  ['Farm health', `${computed.healthScore}%`],
+                  ['Active faults', computed.activeFaults],
+                  ['Incidents', computed.incidentCount],
+                  ['Avg recovery', `${computed.avgRecoveryMin} min`],
+                ].map(([label, value]) => (
+                  <div key={label} className="border-l-2 pl-3" style={{ borderColor: 'var(--color-info)' }}>
+                    <div className="text-xs uppercase" style={{ color: 'var(--color-muted)' }}>{label}</div>
+                    <div className="mt-1 text-xl font-semibold">{value}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-5 space-y-5 text-sm leading-6" style={{ color: 'var(--color-muted)' }}>
+                <section>
+                  <div className="font-semibold" style={{ color: 'var(--color-text)' }}>Snapshot</div>
+                  <p>
+                    {computed.resolved} resolved incident(s), {computed.successRate}% intervention success, and {computed.sensorReliability}% sensor reliability.
+                  </p>
+                </section>
+                <section>
+                  <div className="font-semibold" style={{ color: 'var(--color-text)' }}>Recurring patterns</div>
+                  <ul className="mt-2 space-y-1">
+                    {patterns.map((pattern) => <li key={pattern}>{pattern}</li>)}
+                  </ul>
+                </section>
+                <section>
+                  <div className="font-semibold" style={{ color: 'var(--color-text)' }}>Crop stability summary</div>
+                  <div className="mt-2 divide-y" style={{ borderColor: 'var(--color-border)' }}>
+                    {cropStability.map((crop) => (
+                      <div key={crop.crop} className="py-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="capitalize font-semibold" style={{ color: 'var(--color-text)' }}>{crop.crop}</span>
+                          <span className={`severity-chip severity-${crop.state === 'healthy' ? 'normal' : 'warning'}`}>{crop.state}</span>
+                        </div>
+                        <p className="mt-2">{crop.summary}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </div>
+            </article>
+
+            {messages.map((message) => <ChatBubble key={message.id} message={message} />)}
+
+            {isSending && (
+              <article className="flex justify-start">
+                <div className="max-w-[min(780px,92%)] rounded-md border px-4 py-3 text-sm" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-muted)' }}>
+                  Supervisor is reading the latest analytics context...
+                </div>
+              </article>
+            )}
+          </div>
+        </div>
+
+        <footer className="border-t p-4" style={{ borderColor: 'var(--color-border)' }}>
+          <div className="mx-auto max-w-5xl">
+            {!hasUserMessage && (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {exampleQuestions.map((question) => (
+                <button
+                  key={question}
+                  type="button"
+                  onClick={() => sendQuestion(question)}
+                  disabled={isSending}
+                  className="rounded-md border px-3 py-2 text-left text-sm"
+                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)' }}
+                >
+                  {question}
+                </button>
+              ))}
+            </div>
+            )}
+            <form onSubmit={handleSubmit} className="flex gap-2">
+              <textarea
+                ref={draftRef}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={handleDraftKeyDown}
+                placeholder="Ask about trends, possible errors, or crop stability"
+                rows={1}
+                className="max-h-32 min-h-11 flex-1 resize-none rounded-md border px-3 py-3 text-sm leading-5"
+                style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+              />
+              <button
+                type="submit"
+                disabled={isSending || !draft.trim()}
+                className="min-h-11 rounded-md border px-4 text-sm font-semibold"
+                style={{ borderColor: 'var(--color-info)', background: 'rgba(108, 195, 255, 0.14)', color: 'var(--color-text)' }}
+              >
+                Send
+              </button>
+            </form>
+            {chatError && <p className="mt-2 text-xs" style={{ color: 'var(--color-warning)' }}>{chatError}</p>}
+          </div>
+        </footer>
+      </section>
     </div>
   )
 }

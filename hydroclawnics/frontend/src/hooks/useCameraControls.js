@@ -9,6 +9,11 @@ const SPEED          = 0.075
 const AUTO_ROTATE_IDLE_MS = 5000
 const DRAG_THRESHOLD_MS = 500
 
+function isTypingTarget(target) {
+  const tagName = target?.tagName?.toLowerCase()
+  return tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target?.isContentEditable
+}
+
 export default function useCameraControls() {
   const orbitRef          = useRef(null)
   const modeRef           = useRef('free')
@@ -127,6 +132,7 @@ export default function useCameraControls() {
 
   useEffect(() => {
     const onKeyDown = (e) => {
+      if (isTypingTarget(e.target)) return
       const key = e.key.toLowerCase()
       const wasIdle = autoRotateEnabled
       
@@ -152,6 +158,7 @@ export default function useCameraControls() {
     }
     
     const onKeyUp = (e) => {
+      if (isTypingTarget(e.target)) return
       const key = e.key.toLowerCase()
       if (key === ' ') keysRef.current.space = false
       else keysRef.current[key] = false
