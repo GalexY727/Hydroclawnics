@@ -4,13 +4,15 @@ import asyncio
 import json
 import logging
 import re
-
-from openai import AsyncOpenAI
+from typing import TYPE_CHECKING
 
 from . import action_log as alog
 from . import message_bus, sensor_poller
 from .llm_client import LLMConfig, build_async_client, load_llm_config
 from .table_runner import CROP_MAP
+
+if TYPE_CHECKING:
+    from openai import AsyncOpenAI
 
 logging.basicConfig(
     level=logging.INFO,

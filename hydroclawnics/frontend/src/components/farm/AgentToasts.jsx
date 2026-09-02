@@ -170,12 +170,13 @@ export default function AgentToasts({ agentEvents, mappedPods, onAutoOrbit }) {
           opacity = 1 - (elapsed - TOAST_POP_MS - TOAST_HOLD_MS) / TOAST_FADE_MS
         } else {
           toRemove.push(entry)
-          continue
         }
 
-        entry.sprite.scale.set(scale * 2, scale * 0.5, 1)
-        entry.sprite.material.opacity = opacity
-        entry.sprite.position.y = entry.baseY
+        if (elapsed < TOAST_TOTAL_MS) {
+          entry.sprite.scale.set(scale * 2, scale * 0.5, 1)
+          entry.sprite.material.opacity = opacity
+          entry.sprite.position.y = entry.baseY
+        }
       }
 
       if (toRemove.length > 0) {

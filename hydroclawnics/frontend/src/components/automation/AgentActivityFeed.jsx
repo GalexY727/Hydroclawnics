@@ -1,138 +1,181 @@
-import { useState } from 'react'
+import { FAULT_TYPES, TARGET_RANGES } from '../../data/operations'
 
-const TOOL_LABELS = {
-  turn_fan_on:          'Fan on',
-  turn_fan_off:         'Fan off',
-  set_fan_speed:        (p) => `Fan ${p?.speed_percent ?? '?'}%`,
-  open_vent:            'Vent open',
-  close_vent:           'Vent closed',
-  turn_heater_on:       'Heater on',
-  turn_heater_off:      'Heater off',
-  turn_cooler_on:       'Cooler on',
-  turn_cooler_off:      'Cooler off',
-  turn_humidifier_on:   'Humid. on',
-  turn_humidifier_off:  'Humid. off',
-  turn_dehumidifier_on: 'Dehumid. on',
-  turn_dehumidifier_off:'Dehumid. off',
-  set_climate_target:   (p) => `${p?.temp_c ?? '?'}°C / ${p?.humidity_percent ?? '?'}%`,
-  enter_heat_stress_mode:   'Heat stress mode',
-  enter_high_humidity_mode: 'High humidity mode',
-}
+const MODES = ['Observe Only', 'Recommend', 'Auto-fix Low Risk', 'Supervised Autopilot']
 
-function toolLabel(tool, params) {
-  const entry = TOOL_LABELS[tool]
-  if (!entry) return tool
-  if (typeof entry === 'function') return entry(params)
-  return entry
-}
-
-function borderColor(cycle) {
-  if (cycle.critical_zones?.length) return '#c47a7a'
-  if (cycle.warning_zones?.length)  return '#c8a84b'
-  if (cycle.actions_taken === 0)    return '#7aad7a'
-  return 'var(--color-border)'
-}
-
-function formatTs(ts) {
-  try {
-    return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-  } catch {
-    return ts ?? ''
-  }
-}
-
-function CycleCard({ cycle }) {
-  const [expanded, setExpanded] = useState(false)
-  const actions = cycle.actions ?? []
-
+function Field({ label, children }) {
   return (
-    <div
-      className="rounded-lg border cursor-pointer select-none"
-      style={{
-        background: 'var(--color-surface)',
-        borderColor: 'var(--color-border)',
-        borderLeft: `4px solid ${borderColor(cycle)}`,
-        padding: '14px 16px',
-      }}
-      onClick={() => setExpanded(e => !e)}
-    >
-      <div className="flex items-center justify-between mb-1">
-        <span style={{ color: 'var(--color-muted)', fontSize: 12 }}>{formatTs(cycle.ts)}</span>
-        <span style={{ color: 'var(--color-muted)', fontSize: 12 }}>{cycle.duration_ms != null ? `${cycle.duration_ms}ms` : ''}</span>
-      </div>
-
-      <p style={{ fontWeight: 500, fontSize: 15, color: 'var(--color-text)', marginBottom: 8, lineHeight: 1.5 }}>
-        {cycle.summary_text ?? 'No summary'}
-      </p>
-
-      {((cycle.critical_zones?.length ?? 0) + (cycle.warning_zones?.length ?? 0)) > 0 && (
-        <div className="flex flex-wrap gap-1 mb-2">
-          {(cycle.critical_zones ?? []).map(z => (
-            <span key={z} style={{ background: '#c47a7a22', color: '#c47a7a', border: '1px solid #c47a7a55', borderRadius: 99, fontSize: 12, padding: '2px 8px' }}>
-              {z}
-            </span>
-          ))}
-          {(cycle.warning_zones ?? []).map(z => (
-            <span key={z} style={{ background: '#c8a84b22', color: '#c8a84b', border: '1px solid #c8a84b55', borderRadius: 99, fontSize: 12, padding: '2px 8px' }}>
-              {z}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {expanded && actions.length > 0 && (
-        <div className="flex flex-col gap-2 mt-2 pt-2" style={{ borderTop: '1px solid var(--color-border)' }}>
-          {actions.map((a, i) => (
-            <div key={i} className="flex items-start gap-2">
-              <span style={{ background: 'var(--color-surface-2)', color: 'var(--color-info)', border: '1px solid var(--color-border)', borderRadius: 99, fontSize: 12, padding: '2px 8px', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                {a.pod_id}
-              </span>
-              <div>
-                <span style={{ color: 'var(--color-text)', fontSize: 14, fontWeight: 500 }}>
-                  {toolLabel(a.tool, a.params)}
-                </span>
-                {a.reason && (
-                  <p style={{ color: 'var(--color-muted)', fontSize: 13, marginTop: 2, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                    {a.reason}
-                  </p>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {expanded && actions.length === 0 && (
-        <p style={{ color: 'var(--color-muted)', fontSize: 13, fontStyle: 'italic', marginTop: 8 }}>No actions this cycle</p>
-      )}
-    </div>
+    <label className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
+      <span style={{ color: 'var(--color-muted)' }}>{label}</span>
+      {children}
+    </label>
   )
 }
 
-export default function AgentActivityFeed({ agentCycles, connectionStatus }) {
-  const isRunning = connectionStatus === 'connected'
+function IncidentRow({ incident }) {
+  return (
+    <article className="rounded-md border p-3" style={{ borderColor: 'var(--color-border)', background: 'rgba(8, 13, 20, 0.58)' }}>
+      <div className="flex items-center justify-between gap-2">
+        <span className={`severity-chip severity-${incident.severity}`}>{incident.severity}</span>
+        <span className="text-[11px]" style={{ color: 'var(--color-muted)' }}>{incident.lifecycle}</span>
+      </div>
+      <div className="mt-2 text-sm font-semibold">{incident.title}</div>
+      <p className="mt-1 text-xs leading-5" style={{ color: 'var(--color-muted)' }}>{incident.podId} / {incident.action} / {incident.result}</p>
+    </article>
+  )
+}
+
+export default function AgentActivityFeed({ connectionStatus, events, incidents = [], activeIncident, agentStatus, policy, setPolicy, onSimulateFault, simulationMessage }) {
+  const set = (key, value) => setPolicy((current) => ({ ...current, [key]: value }))
+  const setAllowed = (faultId) => setPolicy((current) => ({
+    ...current,
+    allowedActions: { ...current.allowedActions, [faultId]: !current.allowedActions[faultId] },
+  }))
 
   return (
-    <div className="flex flex-col h-full" style={{ minHeight: 0 }}>
-      <div className="flex items-center gap-2 mb-4 shrink-0">
-        <span style={{ fontWeight: 600, fontSize: 17, color: 'var(--color-text)' }}>Agent Activity</span>
-        {isRunning && (
-          <span className="agent-pulse-dot" style={{ width: 8, height: 8, borderRadius: '50%', background: '#7aad7a', flexShrink: 0 }} />
-        )}
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      <div className="shrink-0">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-semibold">Automation</h1>
+            <p className="mt-1 text-sm" style={{ color: 'var(--color-muted)' }}>Policy-based agent operation with auditable safety limits.</p>
+          </div>
+          <span className="rounded-md border px-3 py-2 text-xs capitalize" style={{ borderColor: 'var(--color-border)', color: connectionStatus === 'connected' ? 'var(--color-success)' : 'var(--color-warning)' }}>
+            {connectionStatus}
+          </span>
+        </div>
       </div>
 
-      <div className="flex flex-col gap-3 overflow-y-auto flex-1" style={{ minHeight: 0 }}>
-        {agentCycles.length === 0 ? (
-          <div className="flex items-center justify-center flex-1">
-            <p style={{ color: 'var(--color-muted)', fontStyle: 'italic', fontSize: 15, textAlign: 'center' }}>
-              Waiting for first agent cycle...
-            </p>
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+        <section className="app-panel rounded-md p-4">
+          <h2 className="text-base font-semibold">Live Agent State</h2>
+          <div className="mt-3 h-2 overflow-hidden rounded-full" style={{ background: 'var(--color-surface-2)' }}>
+            <div className="h-full rounded-full" style={{ width: `${agentStatus.cycleProgress}%`, background: 'linear-gradient(90deg, var(--color-info), var(--color-success))' }} />
           </div>
-        ) : (
-          agentCycles.map((cycle, i) => (
-            <CycleCard key={cycle.cycle_id ?? i} cycle={cycle} />
-          ))
-        )}
+          <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2" style={{ color: 'var(--color-muted)' }}>
+            <span>Scanning <strong style={{ color: 'var(--color-text)' }}>{agentStatus.scanningPodId}</strong></span>
+            <span>Zone <strong style={{ color: 'var(--color-text)' }}>{agentStatus.scanningZone}</strong></span>
+            <span>Policy <strong style={{ color: 'var(--color-text)' }}>{agentStatus.activePolicy}</strong></span>
+            <span>Pending verification <strong style={{ color: 'var(--color-text)' }}>{agentStatus.pendingVerification}</strong></span>
+          </div>
+          {activeIncident && (
+            <div className="mt-3 rounded-md border p-3 text-xs" style={{ borderColor: 'var(--color-info)', background: 'rgba(108, 195, 255, 0.1)', color: 'var(--color-muted)' }}>
+              Active incident: <strong style={{ color: 'var(--color-text)' }}>{activeIncident.podId}</strong> / {activeIncident.lifecycle} / {activeIncident.action}
+            </div>
+          )}
+        </section>
+
+        <section className="app-panel rounded-md p-4">
+          <h2 className="text-base font-semibold">Agent Mode</h2>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {MODES.map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => set('mode', mode)}
+                className="rounded-md border p-3 text-left text-sm font-semibold"
+                style={{
+                  borderColor: policy.mode === mode ? 'var(--color-info)' : 'var(--color-border)',
+                  background: policy.mode === mode ? 'rgba(108, 195, 255, 0.14)' : 'var(--color-surface)',
+                }}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="app-panel rounded-md p-4">
+          <h2 className="text-base font-semibold">Safety Limits</h2>
+          <div className="mt-3 space-y-2">
+            <Field label="Human approval for severe interventions">
+              <input type="checkbox" checked={policy.requireApproval} onChange={(event) => set('requireApproval', event.target.checked)} />
+            </Field>
+            <Field label="Max dosing per hour">
+              <input
+                type="number"
+                min="0"
+                max="80"
+                value={policy.maxDosePerHour}
+                onChange={(event) => set('maxDosePerHour', Number(event.target.value))}
+                className="w-20 rounded-md border px-2 py-1 text-right"
+                style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)' }}
+              />
+            </Field>
+            <Field label="Sensor calibration schedule">
+              <select
+                value={policy.calibrationCadence}
+                onChange={(event) => set('calibrationCadence', event.target.value)}
+                className="rounded-md border px-2 py-1"
+                style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)' }}
+              >
+                {['Every 24 hours', 'Every 72 hours', 'Weekly'].map((item) => <option key={item}>{item}</option>)}
+              </select>
+            </Field>
+          </div>
+        </section>
+
+        <section className="app-panel rounded-md p-4">
+          <h2 className="text-base font-semibold">Allowed Actions By Fault</h2>
+          <div className="mt-3 grid gap-2">
+            {FAULT_TYPES.map((fault) => (
+              <label key={fault.id} className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
+                <span>
+                  <span className="font-semibold">{fault.label}</span>
+                  <span className="ml-2 text-xs" style={{ color: 'var(--color-muted)' }}>{fault.action}</span>
+                </span>
+                <input type="checkbox" checked={Boolean(policy.allowedActions[fault.id])} onChange={() => setAllowed(fault.id)} />
+              </label>
+            ))}
+          </div>
+        </section>
+
+        <section className="app-panel rounded-md p-4">
+          <h2 className="text-base font-semibold">Crop Targets</h2>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {['ph', 'ec_ppm', 'water_temp_c', 'humidity'].map((metric) => {
+              const range = TARGET_RANGES[metric]
+              return (
+                <div key={metric} className="rounded-md border p-3" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
+                  <div className="text-sm font-semibold">{range.label}</div>
+                  <div className="mt-1 text-xs" style={{ color: 'var(--color-muted)' }}>
+                    Target {range.min}-{range.max}{range.unit}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+
+        <section className="app-panel rounded-md p-4">
+          <h2 className="text-base font-semibold">Fault Simulation</h2>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {FAULT_TYPES.slice(0, 6).map((fault) => (
+              <button
+                key={fault.id}
+                type="button"
+                onClick={() => onSimulateFault(fault.id)}
+                className="rounded-md border p-3 text-left text-sm"
+                style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}
+              >
+                <div className="font-semibold">{fault.label}</div>
+                <div className="mt-1 text-xs" style={{ color: 'var(--color-muted)' }}>{fault.issue}</div>
+              </button>
+            ))}
+          </div>
+          <p className="mt-3 text-xs" style={{ color: 'var(--color-warning)' }}>{simulationMessage}</p>
+        </section>
+
+        <section className="app-panel rounded-md p-4">
+          <h2 className="text-base font-semibold">Recent Incident Outcomes</h2>
+          <div className="mt-3 space-y-2">
+            {incidents.slice(0, 8).map((incident) => <IncidentRow key={incident.id} incident={incident} />)}
+            {incidents.length === 0 && events.slice(0, 3).map((event) => (
+              <div key={event.id} className="rounded-md border p-3 text-xs" style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted)' }}>
+                {event.issue} / {event.result}
+              </div>
+            ))}
+          </div>
+        </section>
       </div>
     </div>
   )

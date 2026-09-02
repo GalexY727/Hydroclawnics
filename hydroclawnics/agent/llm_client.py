@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-from openai import AsyncOpenAI
+if TYPE_CHECKING:
+    from openai import AsyncOpenAI
 
 Provider = Literal["none", "ollama", "nvidia", "openai"]
 
@@ -117,6 +118,13 @@ def load_llm_config() -> LLMConfig:
 def build_async_client(config: LLMConfig) -> AsyncOpenAI | None:
     if config.is_mock:
         return None
+    try:
+        from openai import AsyncOpenAI
+    except ModuleNotFoundError as exc:
+        raise EnvironmentError(
+            "The openai package is required when LLM_PROVIDER is not 'none'. "
+            "Install requirements or set LLM_PROVIDER=none for deterministic mode."
+        ) from exc
     if config.provider in {"nvidia", "openai"} and not config.api_key:
         raise EnvironmentError(
             "LLM_API_KEY is required for this provider. "

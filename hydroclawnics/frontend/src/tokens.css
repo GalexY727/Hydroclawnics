@@ -1,0 +1,100 @@
+:root {
+  color-scheme: dark;
+
+  /* Typography */
+  --font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif;
+  --font-size-xs: 11px;
+  --font-size-sm: 13px;
+  --font-size-base: 15px;
+  --font-size-lg: 17px;
+  --font-size-xl: 22px;
+  --font-size-2xl: 28px;
+  --font-size-3xl: 34px;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --tracking-tight: -0.3px;
+  --tracking-normal: 0;
+  --tracking-wide: 0.5px;
+
+  /* Color: backgrounds */
+  --color-bg-base: #0a0a0a;
+  --bg-elevated: #141414;
+  --bg-panel: #1c1c1e;
+  --bg-card: #242426;
+  --bg-hover: #2c2c2e;
+
+  /* Color: text */
+  --color-text-primary: #f5f5f7;
+  --text-secondary: #aeaeb2;
+  --text-tertiary: #636366;
+  --text-disabled: #48484a;
+
+  /* Color: accent */
+  --color-accent: #30d158;
+  --accent-muted: #1a7a32;
+  --accent-subtle: #0d3d1a;
+
+  /* Color: semantic */
+  --color-danger: #ff453a;
+  --warning: #ff9f0a;
+  --info: #0a84ff;
+  --success: #30d158;
+
+  /* Color: borders */
+  --color-border: #2c2c2e;
+  --border-subtle: #1c1c1e;
+  --border-strong: #3a3a3c;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 40px;
+  --space-8: 48px;
+  --space-9: 56px;
+  --space-10: 64px;
+  --space-11: 80px;
+  --space-12: 96px;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+
+  /* Effects */
+  --blur-panel: blur(20px);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
+  --shadow-elevated: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+
+    --color-bg-base: #f5f5f7;
+    --bg-elevated: #ffffff;
+    --bg-panel: #ffffff;
+    --bg-card: #f2f2f7;
+    --bg-hover: #e5e5ea;
+
+    --color-text-primary: #1d1d1f;
+    --text-secondary: #3a3a3c;
+    --text-tertiary: #6e6e73;
+    --text-disabled: #aeaeb2;
+
+    --color-danger: #ff3b30;
+    --warning: #ff9500;
+    --info: #007aff;
+    --success: #30d158;
+
+    --color-border: #d1d1d6;
+    --border-subtle: #e5e5ea;
+    --border-strong: #c7c7cc;
+  }
+}

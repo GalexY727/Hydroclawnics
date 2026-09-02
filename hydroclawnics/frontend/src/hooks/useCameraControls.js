@@ -5,7 +5,7 @@ const DEFAULT_POS    = new THREE.Vector3(0, 9, 12)
 const DEFAULT_TARGET = new THREE.Vector3(0, 0, 0)
 const LERP           = 0.08
 const SETTLED        = 0.02
-const SPEED          = 0.075
+const SPEED          = 0.225
 const AUTO_ROTATE_IDLE_MS = 5000
 const DRAG_THRESHOLD_MS = 500
 
@@ -18,7 +18,7 @@ export default function useCameraControls() {
   const keysRef           = useRef({})
   const hudTimerRef       = useRef(null)
   const idleTimerRef      = useRef(null)
-  const lastInputTimeRef  = useRef(Date.now())
+  const lastInputTimeRef  = useRef(0)
   const mouseDownTimeRef  = useRef(null)
   const lastManualClickMs = useRef(0)
   const [showHud, setShowHud] = useState(false)
@@ -52,6 +52,30 @@ export default function useCameraControls() {
     settledRef.current   = false
     modeRef.current      = 'free'
     setMode('free')
+    resetIdleTimer()
+  }, [resetIdleTimer])
+
+  const setViewPreset = useCallback((preset) => {
+    const controls = orbitRef.current
+    if (!controls) return
+    const camera = controls.object
+    if (preset === 'top') {
+      camera.position.set(0, 18, 0.1)
+      controls.target.set(0, 0, 0)
+    } else if (preset === 'angled') {
+      camera.position.set(0, 9, 12)
+      controls.target.set(0, 0, 0)
+    } else if (preset === 'fault') {
+      camera.position.set(5.5, 5.5, 7)
+      controls.target.set(1, 0, 1)
+    } else {
+      camera.position.copy(DEFAULT_POS)
+      controls.target.copy(DEFAULT_TARGET)
+    }
+    controls.update()
+    modeRef.current = 'free'
+    setMode('free')
+    setAutoRotateEnabled(false)
     resetIdleTimer()
   }, [resetIdleTimer])
 
@@ -173,5 +197,5 @@ export default function useCameraControls() {
     }
   }, [resetIdleTimer, autoRotateEnabled, resetToCenter])
 
-  return { orbitRef, mode, showHud, autoRotateEnabled, selectPod, resetToCenter, handleBackgroundClick, tick, lastManualClickMs }
+  return { orbitRef, mode, showHud, autoRotateEnabled, selectPod, resetToCenter, setViewPreset, handleBackgroundClick, tick, lastManualClickMs }
 }

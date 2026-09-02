@@ -7,14 +7,16 @@ import logging
 import re
 import time
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 from uuid import uuid4
-
-from openai import AsyncOpenAI
 
 from . import action_log as alog
 from . import message_bus, sensor_poller, sim_bridge
 from .llm_client import LLMConfig, build_async_client, load_llm_config
 from .tool_registry import as_openai_tools, execute_tool
+
+if TYPE_CHECKING:
+    from openai import AsyncOpenAI
 
 logging.basicConfig(
     level=logging.INFO,
@@ -144,6 +146,40 @@ _FAULT_METRICS: dict[str, str] = {
 }
 
 _METRIC_PRIORITY = ("ph", "ec_ppm", "temp_c", "light_lux")
+_TREND_CONTEXT_METRICS = (
+    "ph",
+    "ec_ppm",
+    "water_temp_c",
+    "air_temp_c",
+    "relative_humidity_percent",
+    "light_lux",
+    "water_level_percent",
+    "flow_rate_l_min",
+)
+
+
+def _format_delta(value: object) -> str:
+    try:
+        delta = float(value)
+    except (TypeError, ValueError):
+        return "+0"
+    if abs(delta) < 0.005:
+        delta = 0.0
+    return f"{delta:+.2f}".rstrip("0").rstrip(".")
+
+
+def _format_trends(trends: object) -> str:
+    if not isinstance(trends, dict):
+        return ""
+
+    parts: list[str] = []
+    for metric in _TREND_CONTEXT_METRICS:
+        trend = trends.get(metric)
+        if not isinstance(trend, dict):
+            continue
+        label = trend.get("trend", "stable")
+        parts.append(f"{metric} {_format_delta(trend.get('delta'))} ({label})")
+    return f"TRENDS: {', '.join(parts)}" if parts else ""
 
 
 def _build_prompt(
@@ -196,6 +232,9 @@ def _build_prompt(
                 f"air_temp={pod.get('temp_c','?')}°C | lux={pod.get('light_lux','?')} | "
                 f"age={age_h}h | height={plant_h_cm}cm | {zone_ts}{action_hint}"
             )
+            trend_line = _format_trends(pod.get("trends"))
+            if trend_line:
+                lines.append(f"    {trend_line}")
 
     if directives:
         lines.append("\n## PENDING SUPERVISOR DIRECTIVES — ACT ON THESE NOW")

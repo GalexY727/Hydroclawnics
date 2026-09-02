@@ -13,11 +13,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 try:
-    from hydroclawnics import agent_bridge, state
+    from hydroclawnics import state
+    from hydroclawnics.agent import action_log
     from hydroclawnics.simulator import SENSORS_FILE, SimulatorEngine, inject_fault
 except ModuleNotFoundError:
-    import agent_bridge
     import state
+    from agent import action_log
     from simulator import SENSORS_FILE, SimulatorEngine, inject_fault
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -238,7 +239,7 @@ async def startup_event() -> None:
         state.append_decision(entry)
         await broadcast({"type": "agent_decision", "entry": entry})
 
-    bridge_task = asyncio.create_task(agent_bridge.tail_decisions(bridge_broadcast), name="decision-tail")
+    bridge_task = asyncio.create_task(action_log.tail_decisions(bridge_broadcast), name="decision-tail")
     _maybe_start_demo_agents()
 
 

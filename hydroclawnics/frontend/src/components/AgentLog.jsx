@@ -1,94 +1,159 @@
 import { useState } from 'react'
-import CropIcon from './CropIcon'
-
-const REASONING_PREVIEW_CHARS = 150
-
-function colorForAction(action = '') {
-  const normalized = action.toLowerCase()
-  if (normalized.includes('dose_ph_up') || normalized.includes('dose_ph_down')) return 'var(--color-info)'
-  if (normalized.includes('nutrient')) return 'var(--color-warning)'
-  if (normalized.includes('heat')) return 'var(--color-critical)'
-  if (normalized.includes('alert')) return 'var(--color-neutral)'
-  return 'var(--color-muted)'
-}
 
 function formatTime(timestamp) {
   const date = timestamp ? new Date(timestamp) : new Date()
-  if (Number.isNaN(date.getTime())) return `${timestamp || ''}`.slice(0, 8) || '--:--'
+  if (Number.isNaN(date.getTime())) return '--:--'
   return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
 
-const STATUS_DOT_COLOR = { healthy: 'var(--color-success)', warning: 'var(--color-warning)', critical: 'var(--color-critical)' }
+function eventText(event) {
+  if (event.lifecycle === 'stable') return event.result || 'Farm scan completed'
+  if (event.lifecycle === 'action_applied') return event.action || event.issue
+  if (event.lifecycle === 'verifying') return event.result || `Verifying ${event.issue}`
+  if (event.lifecycle === 'resolved') return event.result || `${event.issue} resolved`
+  return event.issue || event.result || 'Agent activity recorded'
+}
 
-export default function AgentLog({ entries, pods = {} }) {
+function AISentinelFeedItem({ agentStatus, activeIncident, podCount, stableCount }) {
+  return (
+    <section className="feed-block">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold">AI Sentinel</h3>
+          <p className="mt-0.5 text-xs leading-5" style={{ color: 'var(--color-muted)' }}>
+            Scanning {agentStatus.scanningPodId || '--'} in {agentStatus.scanningZone}. {stableCount} of {podCount} pods stable.
+          </p>
+        </div>
+        <span className="ai-pulse mt-1 h-3 w-3 shrink-0 rounded-full" style={{ background: 'var(--color-info)' }} />
+      </div>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full" style={{ background: 'var(--color-surface-2)' }}>
+        <div className="h-full rounded-full" style={{ width: `${agentStatus.cycleProgress}%`, background: 'var(--color-info)' }} />
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-1.5 text-[11px]" style={{ color: 'var(--color-muted)' }}>
+        <span>Next check <strong style={{ color: 'var(--color-text)' }}>{agentStatus.nextCheckSeconds}s</strong></span>
+        <span>Verifying <strong style={{ color: 'var(--color-text)' }}>{agentStatus.pendingVerification}</strong></span>
+        <span className="col-span-2 truncate">Current: <strong style={{ color: 'var(--color-text)' }}>{activeIncident?.lifecycle?.replaceAll('_', ' ') || 'routine scan'}</strong></span>
+      </div>
+    </section>
+  )
+}
+
+function IncidentFeedCard({ incident, active, expanded, onToggle, onSelect }) {
+  const status = incident.lifecycle === 'verifying' ? 'verifying' : incident.severity
+  return (
+    <article className={`feed-incident ${active ? 'incident-card-active' : ''}`}>
+      <button type="button" className="w-full text-left" onClick={() => onSelect?.(incident)}>
+        <div className="flex items-center justify-between gap-2">
+          <span className={`status-pill status-${status}`}>{incident.lifecycle.replaceAll('_', ' ')}</span>
+          <span className="text-[11px]" style={{ color: 'var(--color-muted)' }}>{formatTime(incident.timestamp)}</span>
+        </div>
+        <h4 className="mt-1.5 text-sm font-semibold leading-5">{incident.title}</h4>
+        <div className="mt-1 truncate text-xs" style={{ color: 'var(--color-muted)' }}>
+          {incident.podId} · {incident.crop} · {incident.zone} · {incident.reservoir}
+        </div>
+      </button>
+      <button type="button" className="mt-2 text-xs font-semibold" style={{ color: 'var(--color-info)' }} onClick={() => onToggle(incident.id)}>
+        {expanded ? 'Hide details' : 'Show evidence'}
+      </button>
+      {expanded && (
+        <div className="mt-2 grid gap-1.5 border-t pt-2 text-xs leading-5" style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted)' }}>
+          <p><strong style={{ color: 'var(--color-text)' }}>Evidence:</strong> {incident.evidence}</p>
+          <p><strong style={{ color: 'var(--color-text)' }}>Action:</strong> {incident.action}</p>
+          <p><strong style={{ color: 'var(--color-text)' }}>Verification:</strong> {incident.result}</p>
+        </div>
+      )}
+    </article>
+  )
+}
+
+function EventRow({ event }) {
+  return (
+    <div className="event-row">
+      <span className="shrink-0 font-mono text-[11px]" style={{ color: 'var(--color-muted)' }}>{formatTime(event.timestamp)}</span>
+      <div className="min-w-0">
+        <div className="truncate text-xs">{eventText(event)}</div>
+        <div className="mt-0.5 truncate text-[11px]" style={{ color: 'var(--color-muted)' }}>
+          {event.podId} · {event.zone} · {event.reservoir}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SectionTitle({ children }) {
+  return <h3 className="mb-1.5 text-xs font-semibold uppercase" style={{ color: 'var(--color-muted)' }}>{children}</h3>
+}
+
+export default function AgentLog({ entries = [], events = [], incidents = [], activeIncident, agentStatus, pods = {}, onIncidentSelect }) {
   const [expanded, setExpanded] = useState({})
+  const podList = Object.values(pods)
+  const stableCount = podList.filter((pod) => pod.status === 'healthy').length
+  const activeIncidents = incidents.filter((incident) => incident.status === 'active')
+  const recentResolved = incidents.filter((incident) => incident.status !== 'active').slice(0, 3)
+  const recentEvents = [...events].sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0)).slice(0, 8)
+  const backendEntry = entries[0]
+
+  const toggle = (id) => setExpanded((current) => ({ ...current, [id]: !current[id] }))
 
   return (
-    <section className="flex h-full min-h-0 flex-col rounded-lg border p-4" style={{ borderColor: 'var(--color-border-strong)', background: 'var(--color-surface)' }}>
-      <h2 className="mb-4 shrink-0 text-base font-semibold" style={{ color: 'var(--color-text)' }}>
-        Agent Reasoning Feed
-      </h2>
+    <section className="operations-feed flex h-full min-h-0 flex-col rounded-md border" style={{ borderColor: 'var(--color-border-strong)', background: 'var(--color-surface)' }}>
+      <header className="shrink-0 border-b p-3" style={{ borderColor: 'var(--color-border)' }}>
+        <h2 className="text-base font-semibold">Operations Feed</h2>
+        <p className="mt-1 text-xs" style={{ color: 'var(--color-muted)' }}>Live AI activity and incident audit</p>
+      </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-        {entries.length === 0 ? (
-          <div className="flex min-h-64 items-center justify-center text-center text-sm italic" style={{ color: 'var(--color-muted)' }}>
-            Waiting for agent decisions...
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+        <section>
+          <SectionTitle>Now</SectionTitle>
+          <AISentinelFeedItem agentStatus={agentStatus} activeIncident={activeIncident} podCount={podList.length} stableCount={stableCount} />
+          {backendEntry && (
+            <div className="mt-1.5 rounded-md px-2.5 py-1.5 text-xs leading-5" style={{ background: 'rgba(108, 195, 255, 0.08)', color: 'var(--color-muted)' }}>
+              {backendEntry.diagnosis || backendEntry.reasoning || 'Decision received'}
+            </div>
+          )}
+        </section>
+
+        <section>
+          <SectionTitle>Active Incidents</SectionTitle>
+          <div className="space-y-2">
+            {activeIncidents.length ? activeIncidents.map((incident) => (
+              <IncidentFeedCard
+                key={incident.id}
+                incident={incident}
+                active={activeIncident?.id === incident.id}
+                expanded={Boolean(expanded[incident.id])}
+                onToggle={toggle}
+                onSelect={onIncidentSelect}
+              />
+            )) : (
+              <div className="feed-empty">No active incidents. Routine scans continue.</div>
+            )}
           </div>
-        ) : (
-          entries.map((entry, idx) => {
-            const key = `${entry.timestamp}-${entry.pod_id}-${idx}`
-            const reasoning = `${entry.reasoning || ''}`
-            const isExpanded = Boolean(expanded[key])
-            const shouldTruncate = reasoning.length > REASONING_PREVIEW_CHARS
-            const visibleReasoning = isExpanded || !shouldTruncate ? reasoning : `${reasoning.slice(0, REASONING_PREVIEW_CHARS)}`
-            const crop = (entry.pod_id ? pods[entry.pod_id]?.crop : null) ?? entry.crop ?? null
+        </section>
 
-            return (
-              <article key={key} className="log-entry border-b py-4 first:pt-0 last:border-b-0" style={{ borderColor: 'var(--color-border)' }}>
-                <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                  {(() => {
-                    const podStatus = (entry.pod_id ? pods[entry.pod_id]?.status : null) ?? entry.status ?? null
-                    return podStatus ? (
-                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: STATUS_DOT_COLOR[podStatus] || STATUS_DOT_COLOR.healthy }} />
-                    ) : null
-                  })()}
-                  <span className="text-sm" style={{ color: 'var(--color-muted)' }}>
-                    {formatTime(entry.timestamp)}
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: 'var(--color-surface-2)', color: 'var(--color-muted)' }}>
-                    {crop ? <CropIcon crop={crop} className="h-3.5 w-3.5" /> : null}
-                    {entry.pod_id || 'pod'}
-                  </span>
-                </div>
+        <section>
+          <SectionTitle>Recent Events</SectionTitle>
+          <div className="space-y-1">
+            {recentEvents.map((event) => <EventRow key={event.id} event={event} />)}
+          </div>
+        </section>
 
-                <div className="text-sm font-bold leading-6" style={{ color: 'var(--color-text)' }}>
-                  {entry.diagnosis || 'Decision received'}
-                </div>
-
-                <div className="mt-2 max-w-full truncate font-mono text-sm" style={{ color: colorForAction(entry.action) }}>
-                  {entry.action || 'observe'}
-                </div>
-
-                <p className="mt-2 text-sm leading-6" style={{ color: 'var(--color-muted)' }}>
-                  <span className={idx === 0 ? 'typewriter' : ''}>{visibleReasoning || 'No reasoning supplied.'}</span>
-                  {shouldTruncate && !isExpanded ? (
-                    <>
-                      <span>...</span>{' '}
-                      <button type="button" className="font-semibold" style={{ color: 'var(--color-info)' }} onClick={() => setExpanded((prev) => ({ ...prev, [key]: true }))}>
-                        more
-                      </button>
-                    </>
-                  ) : null}
-                </p>
-
-                {shouldTruncate && isExpanded ? (
-                  <button type="button" className="mt-2 text-sm font-semibold" style={{ color: 'var(--color-info)' }} onClick={() => setExpanded((prev) => ({ ...prev, [key]: false }))}>
-                    less
-                  </button>
-                ) : null}
-              </article>
-            )
-          })
+        {recentResolved.length > 0 && (
+          <section>
+            <SectionTitle>Recent Resolved</SectionTitle>
+            <div className="space-y-2">
+              {recentResolved.map((incident) => (
+                <IncidentFeedCard
+                  key={incident.id}
+                  incident={incident}
+                  active={false}
+                  expanded={Boolean(expanded[incident.id])}
+                  onToggle={toggle}
+                  onSelect={onIncidentSelect}
+                />
+              ))}
+            </div>
+          </section>
         )}
       </div>
     </section>
